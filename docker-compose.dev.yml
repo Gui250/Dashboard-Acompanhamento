@@ -1,0 +1,55 @@
+# Dev com hot reload: docker compose -f docker-compose.dev.yml up --build
+# Lê ./.env se existir; sem ele usa os defaults abaixo (só para desenvolvimento).
+name: v4dash-dev
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: v4
+      POSTGRES_PASSWORD: v4
+      POSTGRES_DB: v4_dashboard
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U v4 -d v4_dashboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: { context: ./backend, target: dev }
+    init: true
+    command: sh -c "npx drizzle-kit migrate && npx tsx watch src/server.ts"
+    environment:
+      DATABASE_URL: postgres://v4:v4@db:5432/v4_dashboard
+      PORT: 3333
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret}
+      SETTINGS_SECRET: ${SETTINGS_SECRET:-dev-settings-secret}
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-3000}
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules # node_modules do container (Linux), não o do host
+    ports:
+      - "${API_PORT:-3333}:3333"
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: { context: ./frontend, target: dev }
+    init: true
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-3333}
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next # não compartilha o .next do host
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

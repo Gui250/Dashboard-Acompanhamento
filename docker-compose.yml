@@ -1,0 +1,73 @@
+# Produção: docker compose up -d --build  (variáveis em ./.env — veja .env.example)
+name: v4dash
+
+x-db-url: &db_url postgres://${POSTGRES_USER:?defina no .env}:${POSTGRES_PASSWORD:?defina no .env}@db:5432/${POSTGRES_DB:?defina no .env}
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Roda uma vez a cada "up"; a API só sobe se terminar com sucesso.
+  migrate:
+    build: { context: ./backend, target: migrate }
+    environment:
+      DATABASE_URL: *db_url
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: { context: ./backend, target: runtime }
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: *db_url
+      PORT: 3333
+      JWT_SECRET: ${JWT_SECRET:?defina no .env}
+      SETTINGS_SECRET: ${SETTINGS_SECRET:?defina no .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:?defina no .env}
+    ports:
+      - "${API_PORT:-3333}:3333"
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: ./frontend
+      target: runtime
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?defina no .env}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:

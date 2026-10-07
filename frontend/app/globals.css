@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 14% 97%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --primary: 356 93% 47%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 220 12% 95%;
+    --muted-foreground: 220 7% 43%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 11% 89%;
+    --input: 220 11% 89%;
+    --ring: 356 93% 47%;
+    --radius: 0.9rem;
+    --v4-red: #e50915;
+    --v4-ink: #171717;
+    --v4-fog: #f4f5f7;
+  }
+
+  * { @apply border-border; }
+  html { @apply antialiased; }
+  body { @apply bg-background text-foreground; }
+  ::selection { background: rgba(229, 9, 21, 0.16); }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .data-label { @apply font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground; }
+  .panel { @apply rounded-lg border bg-card shadow-panel; }
+  .v4-cut { position: relative; overflow: hidden; }
+  .v4-cut::after {
+    background: var(--v4-red);
+    content: "";
+    height: 74px;
+    opacity: .9;
+    position: absolute;
+    right: -44px;
+    top: -45px;
+    transform: rotate(42deg);
+    width: 76px;
+  }
+  .grid-paper {
+    background-image: linear-gradient(rgba(23,23,23,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(23,23,23,.028) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
