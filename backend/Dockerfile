@@ -16,10 +16,6 @@ FROM deps AS build
 COPY --chown=node:node . .
 RUN npm run build
 
-# One-shot: aplica backend/drizzle/*.sql (drizzle-kit é devDependency) e sai
-FROM build AS migrate
-CMD ["npx", "drizzle-kit", "migrate"]
-
 FROM base AS prod-deps
 COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev
@@ -29,7 +25,9 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY drizzle ./drizzle
 COPY package.json ./
 USER node
 EXPOSE 3333
-CMD ["node", "dist/server.js"]
+# Migrations antes do server: se falharem, o container não sobe.
+CMD ["sh", "-c", "node dist/migrate.js && exec node dist/server.js"]

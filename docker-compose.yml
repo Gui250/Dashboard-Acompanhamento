@@ -19,15 +19,7 @@ services:
       timeout: 5s
       retries: 20
 
-  # Roda uma vez a cada "up"; a API só sobe se terminar com sucesso.
-  migrate:
-    build: { context: ./backend, target: migrate }
-    environment:
-      DATABASE_URL: *db_url
-    depends_on:
-      db: { condition: service_healthy }
-    restart: "no"
-
+  # O CMD da imagem aplica as migrations (dist/migrate.js) antes de subir o server.
   api:
     build: { context: ./backend, target: runtime }
     restart: unless-stopped
@@ -42,7 +34,6 @@ services:
       - "${API_PORT:-3333}:3333"
     depends_on:
       db: { condition: service_healthy }
-      migrate: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3333/health"]
       interval: 10s

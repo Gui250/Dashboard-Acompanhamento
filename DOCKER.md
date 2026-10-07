@@ -20,13 +20,13 @@ cp .env.example .env    # preencha senhas e segredos (openssl rand -hex 32)
 docker compose up -d --build
 ```
 
-Ordem de subida: `db` (healthy) → `migrate` (one-shot, aplica `backend/drizzle/*.sql`) → `api` (healthy em `/health`) → `web`.
+Ordem de subida: `db` (healthy) → `api` (o CMD da imagem roda `dist/migrate.js` e depois o server; healthy em `/health`) → `web`.
 A `NEXT_PUBLIC_API_URL` é embutida no build do front: se mudar no `.env`, rode `docker compose up -d --build web`.
 
 ## Migrations
 
 ```bash
-docker compose run --rm migrate                                            # produção (também roda a cada `up`)
+docker compose run --rm api node dist/migrate.js                          # produção (também roda a cada start da api)
 docker compose -f docker-compose.dev.yml exec api npx drizzle-kit migrate  # dev
 ```
 
@@ -53,3 +53,33 @@ docker compose up -d --build
 ```
 
 Use o mesmo `SETTINGS_SECRET` do `backend/.env`; caso contrário, a chave da OpenAI salva no banco não decifra.
+
+## Deploy no Render
+
+O `render.yaml` (Blueprint) cria o Postgres 16 `v4-dashboard-db` e os web services Docker `v4-dashboard-api` e `v4-dashboard-web`, todos no plano free e em `oregon`.
+
+1. Render → **New → Blueprint** → conecte o repo `Gui250/Dashboard-Acompanhamento` (branch principal). O Render lê o `render.yaml` da raiz.
+2. Preencha as variáveis pedidas (`sync: false`):
+   - `CORS_ORIGIN` (api) = URL https do web, ex.: `https://v4-dashboard-web.onrender.com`
+   - `NEXT_PUBLIC_API_URL` (web) = URL https da api, ex.: `https://v4-dashboard-api.onrender.com`
+
+   Se o Render acrescentar um sufixo às URLs, corrija as duas variáveis depois. `NEXT_PUBLIC_API_URL` é embutida no build (o Render repassa as env vars como build args do Docker), então mudar a URL da API exige um **redeploy do web**. Mudar `CORS_ORIGIN` só reinicia a api.
+3. `DATABASE_URL`, `JWT_SECRET` e `SETTINGS_SECRET` são preenchidas sozinhas (banco e valores gerados). As migrations rodam a cada deploy, no start da api: se falharem, o deploy não sobe.
+4. Depois do primeiro deploy: crie a conta em `/login` e cadastre a chave da OpenAI (e o token da Meta) na tela **Integrações**. Eles ficam no banco, cifrados com o `SETTINGS_SECRET`.
+
+Limitações do plano free:
+
+- Os web services dormem após 15 min sem tráfego; o primeiro acesso depois disso leva de ~30 s a 1 min.
+- O Postgres free expira 30 dias após a criação (há 14 dias de carência para fazer upgrade antes de ser apagado).
+- Só um Postgres free por workspace.
+
+### Levar os dados atuais para o Render
+
+Copie a **External Database URL** em Render → `v4-dashboard-db` → Connect. Se o primeiro deploy da api já rodou, as tabelas existem, e o `--clean` as substitui.
+
+```bash
+docker exec backend-db-1 pg_dump -U v4 -Fc v4_dashboard > v4.dump
+docker run --rm -i postgres:16 pg_restore --clean --if-exists --no-owner -d "<External Database URL>" < v4.dump
+```
+
+As integrações salvas foram cifradas com o `SETTINGS_SECRET` local. Para continuarem válidas, copie o valor de `backend/.env` para o `SETTINGS_SECRET` da api no Render (e faça um redeploy); caso contrário, recadastre-as na tela Integrações.
