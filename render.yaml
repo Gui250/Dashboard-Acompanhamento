@@ -1,11 +1,5 @@
-# Blueprint do Render (render.com/docs/blueprint-spec). Tudo free e na mesma região.
-databases:
-  - name: v4-dashboard-db
-    plan: free
-    region: oregon
-    postgresMajorVersion: "16"
-    databaseName: v4_dashboard
-    user: v4
+# Blueprint do Render (render.com/docs/blueprint-spec). Web services free, mesma região.
+# O banco é externo (Neon): DATABASE_URL é preenchida no painel do Render, nunca neste arquivo.
 
 services:
   # A imagem roda as migrations (dist/migrate.js) e depois o server, na porta $PORT do Render.
@@ -18,10 +12,9 @@ services:
     dockerfilePath: ./backend/Dockerfile
     healthCheckPath: /health
     envVars:
+      # URL do Postgres (Neon). sync: false = o Blueprint não sobrescreve o valor do painel.
       - key: DATABASE_URL
-        fromDatabase:
-          name: v4-dashboard-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: SETTINGS_SECRET

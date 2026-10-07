@@ -56,7 +56,7 @@ Use o mesmo `SETTINGS_SECRET` do `backend/.env`; caso contrário, a chave da Ope
 
 ## Deploy no Render
 
-O `render.yaml` (Blueprint) cria o Postgres 16 `v4-dashboard-db` e os web services Docker `v4-dashboard-api` e `v4-dashboard-web`, todos no plano free e em `oregon`.
+O `render.yaml` (Blueprint) cria os web services Docker `v4-dashboard-api` e `v4-dashboard-web`, no plano free e em `oregon`. O banco é externo: Postgres no **Neon**.
 
 1. Render → **New → Blueprint** → conecte o repo `Gui250/Dashboard-Acompanhamento` (branch principal). O Render lê o `render.yaml` da raiz.
 2. As URLs já vêm fixas no `render.yaml`:
@@ -64,22 +64,20 @@ O `render.yaml` (Blueprint) cria o Postgres 16 `v4-dashboard-db` e os web servic
    - `NEXT_PUBLIC_API_URL` (web) = `https://v4-dashboard-api.onrender.com`
 
    Se os serviços ganharem outro nome ou domínio, atualize as duas no `render.yaml` e faça push. Sem elas o front chama `http://localhost:3333` e a API recusa o front no CORS ("Não foi possível conectar à API"). `NEXT_PUBLIC_API_URL` é embutida no build (o Render repassa as env vars como build args do Docker), então mudar a URL da API exige um **redeploy do web**. Mudar `CORS_ORIGIN` só reinicia a api.
-3. `DATABASE_URL`, `JWT_SECRET` e `SETTINGS_SECRET` são preenchidas sozinhas (banco e valores gerados). As migrations rodam a cada deploy, no start da api: se falharem, o deploy não sobe.
+3. `DATABASE_URL` (api) é preenchida **no painel do Render** com a connection string do Neon (`sync: false`: o Blueprint não sobrescreve). Nunca coloque essa URL no repositório, porque ela contém a senha. `JWT_SECRET` e `SETTINGS_SECRET` são geradas pelo Render. As migrations rodam a cada deploy, no start da api: se falharem (ex.: `DATABASE_URL` vazia ou errada), o deploy não sobe e o Render mantém a versão anterior no ar.
 4. Depois do primeiro deploy: crie a conta em `/login` e cadastre a chave da OpenAI (e o token da Meta) na tela **Integrações**. Eles ficam no banco, cifrados com o `SETTINGS_SECRET`.
 
 Limitações do plano free:
 
 - Os web services dormem após 15 min sem tráfego; o primeiro acesso depois disso leva de ~30 s a 1 min.
-- O Postgres free expira 30 dias após a criação (há 14 dias de carência para fazer upgrade antes de ser apagado).
-- Só um Postgres free por workspace.
 
-### Levar os dados atuais para o Render
+### Levar os dados locais para o Neon
 
-Copie a **External Database URL** em Render → `v4-dashboard-db` → Connect. Se o primeiro deploy da api já rodou, as tabelas existem, e o `--clean` as substitui.
+Use a connection string do Neon (painel do Neon → Connect). Se a api já rodou, as tabelas existem, e o `--clean` as substitui.
 
 ```bash
 docker exec backend-db-1 pg_dump -U v4 -Fc v4_dashboard > v4.dump
-docker run --rm -i postgres:16 pg_restore --clean --if-exists --no-owner -d "<External Database URL>" < v4.dump
+docker run --rm -i postgres:16 pg_restore --clean --if-exists --no-owner -d "<connection string do Neon>" < v4.dump
 ```
 
 As integrações salvas foram cifradas com o `SETTINGS_SECRET` local. Para continuarem válidas, copie o valor de `backend/.env` para o `SETTINGS_SECRET` da api no Render (e faça um redeploy); caso contrário, recadastre-as na tela Integrações.
