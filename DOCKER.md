@@ -59,11 +59,11 @@ Use o mesmo `SETTINGS_SECRET` do `backend/.env`; caso contrário, a chave da Ope
 O `render.yaml` (Blueprint) cria o Postgres 16 `v4-dashboard-db` e os web services Docker `v4-dashboard-api` e `v4-dashboard-web`, todos no plano free e em `oregon`.
 
 1. Render → **New → Blueprint** → conecte o repo `Gui250/Dashboard-Acompanhamento` (branch principal). O Render lê o `render.yaml` da raiz.
-2. Preencha as variáveis pedidas (`sync: false`):
-   - `CORS_ORIGIN` (api) = URL https do web, ex.: `https://v4-dashboard-web.onrender.com`
-   - `NEXT_PUBLIC_API_URL` (web) = URL https da api, ex.: `https://v4-dashboard-api.onrender.com`
+2. As URLs já vêm fixas no `render.yaml`:
+   - `CORS_ORIGIN` (api) = `https://v4-dashboard-web.onrender.com`
+   - `NEXT_PUBLIC_API_URL` (web) = `https://v4-dashboard-api.onrender.com`
 
-   Se o Render acrescentar um sufixo às URLs, corrija as duas variáveis depois. `NEXT_PUBLIC_API_URL` é embutida no build (o Render repassa as env vars como build args do Docker), então mudar a URL da API exige um **redeploy do web**. Mudar `CORS_ORIGIN` só reinicia a api.
+   Se os serviços ganharem outro nome ou domínio, atualize as duas no `render.yaml` e faça push. Sem elas o front chama `http://localhost:3333` e a API recusa o front no CORS ("Não foi possível conectar à API"). `NEXT_PUBLIC_API_URL` é embutida no build (o Render repassa as env vars como build args do Docker), então mudar a URL da API exige um **redeploy do web**. Mudar `CORS_ORIGIN` só reinicia a api.
 3. `DATABASE_URL`, `JWT_SECRET` e `SETTINGS_SECRET` são preenchidas sozinhas (banco e valores gerados). As migrations rodam a cada deploy, no start da api: se falharem, o deploy não sobe.
 4. Depois do primeiro deploy: crie a conta em `/login` e cadastre a chave da OpenAI (e o token da Meta) na tela **Integrações**. Eles ficam no banco, cifrados com o `SETTINGS_SECRET`.
 
