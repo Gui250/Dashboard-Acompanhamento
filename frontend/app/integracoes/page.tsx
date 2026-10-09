@@ -4,6 +4,8 @@ import { KeyRound, Loader2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { PageIntro } from "@/components/dashboard/dashboard-parts";
+import { GoogleIntegrationCard } from "@/components/dashboard/google-integration-card";
+import { McpCard } from "@/components/dashboard/mcp-card";
 import { MetaIntegrationCard } from "@/components/dashboard/meta-integration-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,7 +64,7 @@ export default function IntegracoesPage() {
       <PageIntro
         eyebrow="Integrações"
         title="Conecte as ferramentas do painel."
-        description="A chave da OpenAI alimenta o assistente de IA. Ela fica cifrada no servidor e nunca volta para o navegador."
+        description="OpenAI alimenta o assistente, Meta e Google Ads trazem as contas de anúncio e o MCP leva os dados do painel para outros clientes de IA. Tokens das integrações ficam cifrados no servidor."
         action={null}
       />
 
@@ -103,6 +105,8 @@ export default function IntegracoesPage() {
       </Card>
 
       <MetaIntegrationCard />
+      <GoogleIntegrationCard />
+      <McpCard />
     </div>
   );
 }

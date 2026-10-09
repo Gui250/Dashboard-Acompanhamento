@@ -148,3 +148,8 @@ export async function googleAccounts(req: FastifyRequest<{ Querystring: z.infer<
     return reply.status(502).send({ message: e instanceof google.GoogleError ? e.message : 'Falha ao consultar o Google Ads.' })
   }
 }
+
+// Só usuários logados chegam aqui; a mesma pessoa já poderia usar o próprio JWT no MCP.
+export async function showMcp() {
+  return { apiKey: process.env.MCP_API_KEY || null }
+}

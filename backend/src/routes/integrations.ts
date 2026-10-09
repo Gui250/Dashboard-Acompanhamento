@@ -8,6 +8,7 @@ import {
   googleAuthUrlView,
   googleCallbackQuery,
   googleConfigView,
+  mcpConfigView,
   metaAccountsView,
   metaConfigBody,
   metaConfigView,
@@ -53,6 +54,7 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     { schema: { querystring: dateRangeQuery, response: { 200: googleAccountsView, 409: errorView, 502: errorView } } },
     controller.googleAccounts,
   )
+  app.get('/integrations/mcp', { schema: { response: { 200: mcpConfigView } } }, controller.showMcp)
 }
 
 // Fora do hook de login: o Google redireciona o navegador para cá sem o Bearer.

@@ -59,6 +59,21 @@ export function LoadingDashboard() {
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse rounded-lg border bg-white/70" />)}</div>;
 }
 
+// Mesmo desenho da seção carregada (6 KPIs, gráfico, tabela): nada pula quando os dados chegam.
+export function AdsSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        {Array.from({ length: 6 }, (_, i) => <div key={i} className="h-[84px] animate-pulse rounded-lg border bg-white/70" />)}
+      </div>
+      <div className="h-[460px] animate-pulse rounded-lg border bg-white/70" />
+      <div className="space-y-px overflow-hidden rounded-lg border bg-white/70 p-5">
+        {Array.from({ length: 5 }, (_, i) => <div key={i} className="h-12 animate-pulse rounded bg-muted/70" style={{ animationDelay: `${i * 80}ms` }} />)}
+      </div>
+    </div>
+  );
+}
+
 export function ChartSkeleton() {
   return <div className="h-[380px] animate-pulse rounded-lg border bg-white/70" />;
 }

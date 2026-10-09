@@ -117,4 +117,9 @@ export function touchStale(prefix: string) {
     entry.updatedAt = 0;
     if (entry.data !== undefined) writeSession(key, entry.data, 0);
   }
+  // Depois de um reload (ex.: volta do OAuth) a entrada só existe no sessionStorage.
+  if (typeof window === "undefined") return;
+  for (const stored of Object.keys(sessionStorage)) {
+    if (stored.startsWith(STORAGE_PREFIX + prefix) && !memory.has(stored.slice(STORAGE_PREFIX.length))) sessionStorage.removeItem(stored);
+  }
 }

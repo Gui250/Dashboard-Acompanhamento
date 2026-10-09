@@ -249,9 +249,55 @@ export function saveMetaConfig(input: { accessToken?: string; businessId: string
   return apiRequest<MetaConfig>("/integrations/meta", { method: "PUT", body: JSON.stringify(input) }, true);
 }
 
-export function getMetaAccounts(from?: string, to?: string) {
+function rangeParams(from?: string, to?: string) {
   const params = new URLSearchParams();
   if (from) params.set("from", from);
   if (to) params.set("to", to);
-  return apiRequest<MetaAccountsReport>(`/meta/accounts?${params.toString()}`, undefined, true);
+  return params.toString();
+}
+
+export function getMetaAccounts(from?: string, to?: string) {
+  return apiRequest<MetaAccountsReport>(`/meta/accounts?${rangeParams(from, to)}`, undefined, true);
+}
+
+// enabled = servidor tem as variáveis GOOGLE_*; connected = alguém já autorizou com a conta Google.
+export type GoogleConfig = { enabled: boolean; connected: boolean; email: string | null };
+
+export type GoogleAccount = {
+  id: string;
+  name: string;
+  status: "ativa" | "desativada" | "outro";
+  currency: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionsValue: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+};
+
+export type GoogleAccountsReport = {
+  email: string | null;
+  from: string;
+  to: string;
+  totals: Omit<GoogleAccount, "id" | "name" | "status" | "currency">;
+  accounts: GoogleAccount[];
+};
+
+export function getGoogleConfig() {
+  return apiRequest<GoogleConfig>("/integrations/google", undefined, true);
+}
+
+export function getGoogleAuthUrl() {
+  return apiRequest<{ url: string }>("/integrations/google/auth-url", undefined, true);
+}
+
+export function getGoogleAccounts(from?: string, to?: string) {
+  return apiRequest<GoogleAccountsReport>(`/google/accounts?${rangeParams(from, to)}`, undefined, true);
+}
+
+export function getMcpConfig() {
+  return apiRequest<{ apiKey: string | null }>("/integrations/mcp", undefined, true);
 }

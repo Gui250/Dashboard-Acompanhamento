@@ -103,3 +103,6 @@ export const googleAccountsView = z.object({
     }),
   ),
 })
+
+// Chave fixa do servidor MCP (env MCP_API_KEY); null = só o JWT do login entra.
+export const mcpConfigView = z.object({ apiKey: z.string().nullable() })

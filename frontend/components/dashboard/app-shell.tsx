@@ -16,7 +16,7 @@ const navigation = [
   { href: "/comercial", label: "Comercial", helper: "Receita & vendas", icon: BarChart3 },
   { href: "/operacional", label: "Operacional", helper: "Contas & entregas", icon: LayoutDashboard },
   { href: "/kanban", label: "Kanban", helper: "Esteira criativa", icon: Blocks },
-  { href: "/integracoes", label: "Integrações", helper: "OpenAI & conexões", icon: Plug },
+  { href: "/integracoes", label: "Integrações", helper: "Ads, IA & MCP", icon: Plug },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
