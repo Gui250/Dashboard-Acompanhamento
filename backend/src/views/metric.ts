@@ -35,4 +35,16 @@ export const metricView = z.object({
 
 export const seriesView = z.array(z.object({ label: z.string(), value: z.number() }))
 
+export const dashboardQuery = z.object({
+  section,
+  timelineKey: z.string().min(1),
+  rankingKey: z.string().min(1).optional(),
+})
+
+export const dashboardView = z.object({
+  metrics: z.array(metricView),
+  timeline: seriesView,
+  ranking: seriesView,
+})
+
 export const templateQuery = z.object({ format: z.enum(['xlsx', 'csv']).default('xlsx') })

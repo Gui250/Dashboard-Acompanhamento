@@ -59,8 +59,8 @@ export type Metrics = {
 const sumAction = (actions: Action[] = [], type: string) =>
   actions.filter((a) => a.action_type === type).reduce((s, a) => s + Number(a.value), 0)
 
-// ctr em %, cpc/cpm na moeda da conta; divisão por zero = 0.
-function withRatios(m: Omit<Metrics, 'ctr' | 'cpc' | 'cpm'>): Metrics {
+// ctr em %, cpc/cpm na moeda da conta; divisão por zero = 0. Também usado pelo Google Ads.
+export function withRatios<T extends { spend: number; impressions: number; clicks: number }>(m: T) {
   return {
     ...m,
     ctr: m.impressions ? (m.clicks / m.impressions) * 100 : 0,

@@ -1,13 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { BarChart3, Blocks, ChevronDown, ChevronRight, LayoutDashboard, LogOut, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { prefetchAppData, prefetchRouteData } from "@/lib/prefetch";
 import { useAuth } from "@/components/auth/auth-provider";
-import { AssistantBubble } from "@/components/dashboard/assistant-bubble";
+
+const AssistantBubble = dynamic(() => import("@/components/dashboard/assistant-bubble").then((mod) => mod.AssistantBubble), { ssr: false });
 
 const navigation = [
   { href: "/comercial", label: "Comercial", helper: "Receita & vendas", icon: BarChart3 },
@@ -28,6 +31,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!user && !isLogin) router.replace("/login");
     if (user && isLogin) router.replace("/comercial");
   }, [isLoading, isLogin, router, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    prefetchAppData();
+  }, [user]);
 
   if (isLoading || (!user && !isLogin) || (user && isLogin)) {
     return (
@@ -64,6 +72,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={href}
                   href={href}
+                  onMouseEnter={() => prefetchRouteData(href)}
+                  onFocus={() => prefetchRouteData(href)}
                   className={cn("group flex items-center gap-3 rounded-lg px-3 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", active ? "bg-white text-[#171717]" : "text-white/68 hover:bg-white/[0.07] hover:text-white")}
                 >
                   <span className={cn("grid h-8 w-8 place-items-center rounded-md", active ? "bg-primary text-white" : "bg-white/[0.07]")}><Icon className="h-4 w-4" /></span>
@@ -115,7 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <nav className="flex gap-1 overflow-x-auto border-t px-3 py-2 lg:hidden">
             {navigation.map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className={cn("flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold", pathname.startsWith(href) ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted")}>
+              <Link key={href} href={href} onMouseEnter={() => prefetchRouteData(href)} onFocus={() => prefetchRouteData(href)} className={cn("flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold", pathname.startsWith(href) ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted")}>
                 <Icon className="h-3.5 w-3.5" />{label}
               </Link>
             ))}

@@ -24,6 +24,18 @@ services:
         value: https://v4-dashboard-web.onrender.com
       - key: NODE_ENV
         value: production
+      # Google Ads (opcional): segredos preenchidos no painel. O redirect tem que estar cadastrado no OAuth client.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://v4-dashboard-api.onrender.com/integrations/google/callback
+      # Chave do servidor MCP (/mcp): copie do painel para configurar os clientes.
+      - key: MCP_API_KEY
+        generateValue: true
 
   # O Render repassa as env vars como build args: NEXT_PUBLIC_API_URL entra no ARG do Dockerfile.
   - type: web

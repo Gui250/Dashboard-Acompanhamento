@@ -3,7 +3,11 @@ import * as controller from '../controllers/integration.js'
 import { authenticate } from './auth.js'
 import { errorView } from '../views/user.js'
 import {
-  metaAccountsQuery,
+  dateRangeQuery,
+  googleAccountsView,
+  googleAuthUrlView,
+  googleCallbackQuery,
+  googleConfigView,
   metaAccountsView,
   metaConfigBody,
   metaConfigView,
@@ -35,7 +39,23 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
   )
   app.get(
     '/meta/accounts',
-    { schema: { querystring: metaAccountsQuery, response: { 200: metaAccountsView, 409: errorView, 502: errorView } } },
+    { schema: { querystring: dateRangeQuery, response: { 200: metaAccountsView, 409: errorView, 502: errorView } } },
     controller.metaAccounts,
   )
+  app.get('/integrations/google', { schema: { response: { 200: googleConfigView } } }, controller.showGoogle)
+  app.get(
+    '/integrations/google/auth-url',
+    { schema: { response: { 200: googleAuthUrlView, 409: errorView } } },
+    controller.googleAuthUrl,
+  )
+  app.get(
+    '/google/accounts',
+    { schema: { querystring: dateRangeQuery, response: { 200: googleAccountsView, 409: errorView, 502: errorView } } },
+    controller.googleAccounts,
+  )
+}
+
+// Fora do hook de login: o Google redireciona o navegador para cá sem o Bearer.
+export const googleCallbackRoutes: FastifyPluginAsyncZod = async (app) => {
+  app.get('/integrations/google/callback', { schema: { querystring: googleCallbackQuery } }, controller.googleCallback)
 }

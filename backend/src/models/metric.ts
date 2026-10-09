@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm'
-import { date, doublePrecision, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+import { date, doublePrecision, index, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
 import { db } from './db.js'
 
 export const metrics = pgTable('metrics', {
@@ -10,7 +10,9 @@ export const metrics = pgTable('metrics', {
   value: doublePrecision('value').notNull(),
   date: date('date').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+}, (table) => [
+  index('metrics_section_key_date_idx').on(table.section, table.key, table.date),
+])
 
 export type NewMetric = typeof metrics.$inferInsert
 

@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { z } from 'zod'
 import { COLUMN_OF, parseMetricsSheet, metricsTemplate } from '../lib/spreadsheet.js'
 import { createMetric, createMetrics, listMetrics, metricSeries } from '../models/metric.js'
-import { createMetricBody, type metricFilters, type seriesQuery } from '../views/metric.js'
+import { createMetricBody, type dashboardQuery, type metricFilters, type seriesQuery } from '../views/metric.js'
 
 export async function create(req: FastifyRequest<{ Body: z.infer<typeof createMetricBody> }>, reply: FastifyReply) {
   return reply.status(201).send(await createMetric(req.body))
@@ -14,6 +14,16 @@ export function list(req: FastifyRequest<{ Querystring: z.infer<typeof metricFil
 
 export function series(req: FastifyRequest<{ Querystring: z.infer<typeof seriesQuery> }>) {
   return metricSeries(req.query)
+}
+
+export async function dashboard(req: FastifyRequest<{ Querystring: z.infer<typeof dashboardQuery> }>) {
+  const { section, timelineKey, rankingKey } = req.query
+  const [metrics, timeline, ranking] = await Promise.all([
+    listMetrics({ section }),
+    metricSeries({ section, key: timelineKey, groupBy: 'date' }),
+    rankingKey ? metricSeries({ section, key: rankingKey, groupBy: 'dimension' }) : Promise.resolve([]),
+  ])
+  return { metrics, timeline, ranking }
 }
 
 export async function importSheet(req: FastifyRequest, reply: FastifyReply) {

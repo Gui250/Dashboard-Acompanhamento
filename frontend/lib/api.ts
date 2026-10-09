@@ -12,6 +12,12 @@ export type Metric = {
 
 export type MetricSeriesPoint = { label: string; value: number };
 
+export type DashboardSnapshot = {
+  metrics: Metric[];
+  timeline: MetricSeriesPoint[];
+  ranking: MetricSeriesPoint[];
+};
+
 export type CreativeStage = "briefing" | "producao" | "revisao" | "aprovado" | "publicado";
 
 export type Creative = {
@@ -135,6 +141,12 @@ export function getMetrics(section: MetricSection) {
 export function getSeries(section: MetricSection, key: string, groupBy: "date" | "dimension" = "date") {
   const params = new URLSearchParams({ section, key, groupBy });
   return apiRequest<MetricSeriesPoint[]>(`/metrics/series?${params.toString()}`, undefined, true);
+}
+
+export function getDashboard(section: MetricSection, timelineKey: string, rankingKey?: string) {
+  const params = new URLSearchParams({ section, timelineKey });
+  if (rankingKey) params.set("rankingKey", rankingKey);
+  return apiRequest<DashboardSnapshot>(`/metrics/dashboard?${params.toString()}`, undefined, true);
 }
 
 export function createMetric(input: CreateMetricInput) {

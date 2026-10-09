@@ -70,3 +70,19 @@ export async function saveMetaConfig({ accessToken, businessId }: { accessToken?
   if (accessToken) rows.push({ key: META_TOKEN, value: encrypt(accessToken) })
   await upsert(rows)
 }
+
+const GOOGLE_TOKEN = 'google_refresh_token'
+const GOOGLE_EMAIL = 'google_email'
+
+// null = Google Ads ainda não conectado.
+export async function getGoogleConfig(): Promise<{ refreshToken: string; email: string | null } | null> {
+  const s = await read([GOOGLE_TOKEN, GOOGLE_EMAIL])
+  return s[GOOGLE_TOKEN] ? { refreshToken: decrypt(s[GOOGLE_TOKEN]), email: s[GOOGLE_EMAIL] || null } : null
+}
+
+export async function saveGoogleConfig({ refreshToken, email }: { refreshToken: string; email: string | null }) {
+  await upsert([
+    { key: GOOGLE_TOKEN, value: encrypt(refreshToken) },
+    { key: GOOGLE_EMAIL, value: email ?? '' },
+  ])
+}

@@ -7,8 +7,9 @@ import { z } from 'zod'
 import { authRoutes } from './routes/auth.js'
 import { metricsRoutes } from './routes/metrics.js'
 import { assistantRoutes } from './routes/assistant.js'
-import { integrationsRoutes } from './routes/integrations.js'
+import { googleCallbackRoutes, integrationsRoutes } from './routes/integrations.js'
 import { creativesRoutes } from './routes/creatives.js'
+import { mcpRoutes } from './routes/mcp.js'
 
 z.config(z.locales.pt()) // mensagens de validação em português
 
@@ -27,7 +28,9 @@ await app.register(authRoutes)
 await app.register(metricsRoutes)
 await app.register(assistantRoutes)
 await app.register(integrationsRoutes)
+await app.register(googleCallbackRoutes)
 await app.register(creativesRoutes)
+await app.register(mcpRoutes)
 
 app.get('/health', async () => ({ status: 'ok' }))
 

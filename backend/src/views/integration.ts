@@ -29,7 +29,7 @@ export const metaConfigView = z.object({
 })
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-export const metaAccountsQuery = z.object({ from: date.optional(), to: date.optional() })
+export const dateRangeQuery = z.object({ from: date.optional(), to: date.optional() })
 
 const metrics = {
   spend: z.number(),
@@ -56,6 +56,50 @@ export const metaAccountsView = z.object({
       status: z.enum(['ativa', 'desativada', 'outro']),
       currency: z.string(),
       ...metrics,
+    }),
+  ),
+})
+
+// --- Google Ads --- refresh token nunca volta ao cliente.
+// enabled = servidor tem as variáveis GOOGLE_*; connected = alguém já fez o login Google.
+export const googleConfigView = z.object({
+  enabled: z.boolean(),
+  connected: z.boolean(),
+  email: z.string().nullable(),
+})
+
+export const googleAuthUrlView = z.object({ url: z.string() })
+
+// O Google manda também scope, authuser etc.; o z.object descarta.
+export const googleCallbackQuery = z.object({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+})
+
+const googleMetrics = {
+  spend: z.number(),
+  impressions: z.number(),
+  clicks: z.number(),
+  conversions: z.number(),
+  conversionsValue: z.number(),
+  ctr: z.number(),
+  cpc: z.number(),
+  cpm: z.number(),
+}
+
+export const googleAccountsView = z.object({
+  email: z.string().nullable(),
+  from: z.string(),
+  to: z.string(),
+  totals: z.object(googleMetrics),
+  accounts: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      status: z.enum(['ativa', 'desativada', 'outro']),
+      currency: z.string(),
+      ...googleMetrics,
     }),
   ),
 })

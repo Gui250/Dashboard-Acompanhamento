@@ -1,8 +1,22 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { z } from 'zod'
-import { getMetaConfig, getOpenAIConfig, saveMetaConfig, saveOpenAIConfig } from '../models/setting.js'
+import {
+  getGoogleConfig,
+  getMetaConfig,
+  getOpenAIConfig,
+  saveGoogleConfig,
+  saveMetaConfig,
+  saveOpenAIConfig,
+} from '../models/setting.js'
 import { accountInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
-import type { metaAccountsQuery, metaConfigBody, openAIConfigBody, openAIModelsBody } from '../views/integration.js'
+import * as google from '../lib/google.js'
+import type {
+  dateRangeQuery,
+  googleCallbackQuery,
+  metaConfigBody,
+  openAIConfigBody,
+  openAIModelsBody,
+} from '../views/integration.js'
 
 // Modelos de chat da conta; também serve para validar a chave.
 async function fetchChatModels(apiKey: string) {
@@ -69,11 +83,16 @@ export async function saveMeta(req: FastifyRequest<{ Body: z.infer<typeof metaCo
 
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
-export async function metaAccounts(req: FastifyRequest<{ Querystring: z.infer<typeof metaAccountsQuery> }>, reply: FastifyReply) {
+// Padrão: últimos 30 dias.
+const range = (q: z.infer<typeof dateRangeQuery>) => ({
+  from: q.from ?? day(new Date(Date.now() - 30 * 86_400_000)),
+  to: q.to ?? day(new Date()),
+})
+
+export async function metaAccounts(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
   const config = await getMetaConfig()
   if (!config) return reply.status(409).send({ message: 'Configure a Meta em Integrações.' })
-  const to = req.query.to ?? day(new Date())
-  const from = req.query.from ?? day(new Date(Date.now() - 30 * 86_400_000))
+  const { from, to } = range(req.query)
   try {
     const { accessToken: token, businessId } = config
     const [business, list] = await Promise.all([getBusiness(token, businessId), listBusinessAdAccounts(token, businessId)])
@@ -81,5 +100,51 @@ export async function metaAccounts(req: FastifyRequest<{ Querystring: z.infer<ty
     return { business, from, to, totals: toTotals(accounts), accounts }
   } catch (e) {
     return reply.status(502).send({ message: e instanceof MetaError ? e.message : 'Falha ao consultar a Meta.' })
+  }
+}
+
+// --- Google Ads (OAuth: o usuário faz login no Google e autoriza o app) ---
+const googleOff = { message: 'Google Ads não está habilitado no servidor (faltam as variáveis GOOGLE_*).' }
+
+export async function showGoogle() {
+  const config = await getGoogleConfig()
+  return { enabled: google.googleEnabled(), connected: !!config, email: config?.email ?? null }
+}
+
+// O front busca a URL (com o Bearer) e manda o navegador para ela.
+export async function googleAuthUrl(_req: FastifyRequest, reply: FastifyReply) {
+  if (!google.googleEnabled()) return reply.status(409).send(googleOff)
+  return { url: google.authUrl() }
+}
+
+// Primeira origem do CORS = endereço do front.
+const webUrl = () => (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',')[0]
+
+// Volta do consentimento: rota pública (o navegador chega sem Bearer); o state assinado faz o papel do login.
+export async function googleCallback(req: FastifyRequest<{ Querystring: z.infer<typeof googleCallbackQuery> }>, reply: FastifyReply) {
+  const back = (status: 'ok' | 'cancelado' | 'erro') => reply.redirect(`${webUrl()}/integracoes?google=${status}`)
+  const { code, state, error } = req.query
+  if (!state || !google.validState(state)) return back('erro')
+  if (error || !code) return back('cancelado')
+  try {
+    await saveGoogleConfig(await google.exchangeCode(code))
+  } catch (e) {
+    req.log.error(e, 'falha ao trocar o code do Google')
+    return back('erro')
+  }
+  return back('ok')
+}
+
+export async function googleAccounts(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
+  if (!google.googleEnabled()) return reply.status(409).send(googleOff)
+  const config = await getGoogleConfig()
+  if (!config) return reply.status(409).send({ message: 'Conecte o Google Ads em Integrações.' })
+  const { from, to } = range(req.query)
+  try {
+    const token = await google.accessToken(config.refreshToken)
+    const accounts = await google.accountInsights(token, await google.listAccounts(token), from, to)
+    return { email: config.email, from, to, totals: google.toTotals(accounts), accounts }
+  } catch (e) {
+    return reply.status(502).send({ message: e instanceof google.GoogleError ? e.message : 'Falha ao consultar o Google Ads.' })
   }
 }

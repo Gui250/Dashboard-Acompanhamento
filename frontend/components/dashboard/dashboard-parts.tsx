@@ -1,19 +1,30 @@
 "use client";
 
-import { AlertTriangle, ArrowUpRight, BarChart3, Database, RefreshCw } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { AlertTriangle, ArrowUpRight, Database, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { formatMetricValue, formatShortDate } from "@/lib/utils";
-import type { Metric, MetricSeriesPoint } from "@/lib/api";
+import { formatMetricValue } from "@/lib/utils";
+import type { Metric } from "@/lib/api";
 
-const axisNumberFormatter = new Intl.NumberFormat("pt-BR", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
+export function LoadingDashboard() {
+  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse rounded-lg border bg-white/70" />)}</div>;
+}
 
-export function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action: React.ReactNode }) {
+export function ChartSkeleton() {
+  return <div className="h-[380px] animate-pulse rounded-lg border bg-white/70" />;
+}
+
+export function EmptyChart({ text }: { text: string }) {
+  return (
+    <div className="flex h-[280px] flex-col items-center justify-center text-center">
+      <div className="grid h-11 w-11 place-items-center rounded-full bg-muted text-muted-foreground"><Database className="h-5 w-5" /></div>
+      <p className="mt-3 text-sm font-semibold">Ainda não há dados para exibir</p>
+      <p className="mt-1 max-w-56 text-xs leading-5 text-muted-foreground">{text}</p>
+    </div>
+  );
+}
+
+export function RecentMetrics({ metrics }: { metrics: Metric[] }) {
   return (
     <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-2xl">

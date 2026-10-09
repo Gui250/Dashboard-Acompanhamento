@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurrentUser, type AuthSession, type User } from "@/lib/api";
 import { clearStoredSession, getStoredToken, getStoredUser, storeSession, storeUser } from "@/lib/auth-storage";
@@ -19,24 +19,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const token = getStoredToken();
+    const stored = token ? getStoredUser() : null;
     if (!token) {
       setIsLoading(false);
       return;
     }
+    if (stored) {
+      setUser(stored);
+      setIsLoading(false);
+    }
 
-    setUser(getStoredUser());
+    let active = true;
     getCurrentUser()
       .then((currentUser) => {
+        if (!active) return;
         setUser(currentUser);
         storeUser(currentUser);
       })
       .catch(() => {
+        if (!active) return;
         clearStoredSession();
         setUser(null);
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => { active = false; };
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({
