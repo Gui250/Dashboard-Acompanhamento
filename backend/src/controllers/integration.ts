@@ -11,12 +11,14 @@ import {
   saveMetaConfig,
   saveOpenAIConfig,
 } from '../models/setting.js'
-import { accountInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
+import { accountInsights, campaignInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
 import * as google from '../lib/google.js'
 import type {
   dateRangeQuery,
   googleCallbackQuery,
+  googleCampaignsQuery,
   googleCredentialsBody,
+  metaCampaignsQuery,
   metaConfigBody,
   openAIConfigBody,
   openAIModelsBody,
@@ -102,6 +104,17 @@ export async function metaAccounts(req: FastifyRequest<{ Querystring: z.infer<ty
     const [business, list] = await Promise.all([getBusiness(token, businessId), listBusinessAdAccounts(token, businessId)])
     const accounts = await accountInsights(token, list, from, to)
     return { business, from, to, totals: toTotals(accounts), accounts }
+  } catch (e) {
+    return reply.status(502).send({ message: e instanceof MetaError ? e.message : 'Falha ao consultar a Meta.' })
+  }
+}
+
+export async function metaCampaigns(req: FastifyRequest<{ Querystring: z.infer<typeof metaCampaignsQuery> }>, reply: FastifyReply) {
+  const config = await getMetaConfig()
+  if (!config) return reply.status(409).send({ message: 'Configure a Meta em Integrações.' })
+  const { from, to } = range(req.query)
+  try {
+    return { accountId: req.query.accountId, from, to, campaigns: await campaignInsights(config.accessToken, req.query.accountId, from, to) }
   } catch (e) {
     return reply.status(502).send({ message: e instanceof MetaError ? e.message : 'Falha ao consultar a Meta.' })
   }
@@ -194,6 +207,21 @@ export async function googleAccounts(req: FastifyRequest<{ Querystring: z.infer<
     const auth = { token: await google.accessToken(c.auth), developerToken: c.developerToken }
     const accounts = await google.accountInsights(auth, await google.listAccounts(auth), from, to)
     return { email: c.email, from, to, totals: google.toTotals(accounts), accounts }
+  } catch (e) {
+    return reply.status(502).send({ message: e instanceof google.GoogleError ? e.message : 'Falha ao consultar o Google Ads.' })
+  }
+}
+
+export async function googleCampaigns(req: FastifyRequest<{ Querystring: z.infer<typeof googleCampaignsQuery> }>, reply: FastifyReply) {
+  const c = await googleConn()
+  if (!c.developerToken) return reply.status(409).send(noDevToken)
+  const { from, to } = range(req.query)
+  try {
+    const auth = { token: await google.accessToken(c.auth), developerToken: c.developerToken }
+    // A lista dá o login-customer-id (MCC) que a consulta da conta exige.
+    const account = (await google.listAccounts(auth)).find((a) => a.id === req.query.accountId)
+    if (!account) return reply.status(404).send({ message: 'Conta do Google Ads não encontrada para este acesso.' })
+    return { accountId: account.id, from, to, campaigns: await google.campaignInsights(auth, account, from, to) }
   } catch (e) {
     return reply.status(502).send({ message: e instanceof google.GoogleError ? e.message : 'Falha ao consultar o Google Ads.' })
   }

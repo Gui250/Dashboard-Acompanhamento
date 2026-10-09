@@ -43,6 +43,10 @@ const metrics = {
   cpm: z.number(),
 }
 
+// Meta aceita act_123 ou 123; Google, o ID da conta só com dígitos (sem traços).
+export const metaCampaignsQuery = dateRangeQuery.extend({ accountId: z.string().regex(/^(act_)?\d+$/) })
+export const googleCampaignsQuery = dateRangeQuery.extend({ accountId: z.string().regex(/^\d+$/) })
+
 export const metaAccountsView = z.object({
   business: z.object({ id: z.string(), name: z.string() }),
   from: z.string(),
@@ -109,6 +113,12 @@ export const googleAccountsView = z.object({
     }),
   ),
 })
+
+const campaignsView = <T extends z.ZodRawShape>(campaign: T) =>
+  z.object({ accountId: z.string(), from: z.string(), to: z.string(), campaigns: z.array(z.object({ id: z.string(), name: z.string(), ...campaign })) })
+
+export const metaCampaignsView = campaignsView(metrics)
+export const googleCampaignsView = campaignsView({ status: z.enum(['ativa', 'pausada', 'removida', 'outro']), ...googleMetrics })
 
 // Chave fixa do servidor MCP (env MCP_API_KEY); null = só o JWT do login entra.
 export const mcpConfigView = z.object({ apiKey: z.string().nullable() })

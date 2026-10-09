@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { authenticate } from './auth.js'
 import { createMetricBody, metricFilters, seriesQuery } from '../views/metric.js'
 import { createCreativeBody, updateCreativeBody } from '../views/creative.js'
-import { dateRangeQuery } from '../views/integration.js'
+import { dateRangeQuery, googleCampaignsQuery, metaCampaignsQuery } from '../views/integration.js'
 
 // Servidor MCP (Streamable HTTP) em /mcp. Cada tool repassa para uma rota REST via inject:
 // validação, regras e erros continuam num lugar só. Para expor algo novo, acrescente uma linha em TOOLS.
@@ -14,7 +14,7 @@ import { dateRangeQuery } from '../views/integration.js'
 type Tool = {
   name: string
   description: string
-  method: 'GET' | 'POST' | 'PATCH'
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   url: string // ":id" é trocado pelo argumento de mesmo nome
   input: z.ZodObject
 }
@@ -67,6 +67,13 @@ const TOOLS: Tool[] = [
     input: updateCreativeBody.extend({ id: z.number().int().positive() }),
   },
   {
+    name: 'delete_creative',
+    description: 'Apaga um criativo do kanban pelo id (inclui a imagem). Não dá para desfazer: confirme com o usuário antes.',
+    method: 'DELETE',
+    url: '/creatives/:id',
+    input: z.object({ id: z.number().int().positive() }),
+  },
+  {
     name: 'meta_ads_accounts',
     description: 'Contas de anúncio da Meta com gasto, impressões, cliques, alcance, leads, compras, CTR, CPC e CPM no período (padrão: últimos 30 dias).',
     method: 'GET',
@@ -74,11 +81,27 @@ const TOOLS: Tool[] = [
     input: dateRangeQuery,
   },
   {
+    name: 'meta_ads_campaigns',
+    description:
+      'Campanhas de uma conta da Meta (accountId = id de meta_ads_accounts, ex.: act_123) com gasto, impressões, cliques, alcance, leads, compras, CTR, CPC e CPM no período (padrão: últimos 30 dias).',
+    method: 'GET',
+    url: '/meta/campaigns',
+    input: metaCampaignsQuery,
+  },
+  {
     name: 'google_ads_accounts',
     description: 'Contas do Google Ads com gasto, impressões, cliques, conversões, valor de conversão, CTR, CPC e CPM no período (padrão: últimos 30 dias).',
     method: 'GET',
     url: '/google/accounts',
     input: dateRangeQuery,
+  },
+  {
+    name: 'google_ads_campaigns',
+    description:
+      'Campanhas de uma conta do Google Ads (accountId = id de google_ads_accounts, só dígitos) com status, gasto, impressões, cliques, conversões, valor de conversão, CTR, CPC e CPM no período (padrão: últimos 30 dias).',
+    method: 'GET',
+    url: '/google/campaigns',
+    input: googleCampaignsQuery,
   },
 ]
 
@@ -90,7 +113,7 @@ function buildServer(app: FastifyInstance) {
   for (const t of TOOLS) {
     server.registerTool(
       t.name,
-      { description: t.description, inputSchema: t.input, annotations: { readOnlyHint: t.method === 'GET', destructiveHint: false } },
+      { description: t.description, inputSchema: t.input, annotations: { readOnlyHint: t.method === 'GET', destructiveHint: t.method === 'DELETE' } },
       async (args: Record<string, unknown>) => {
         const { id, ...rest } = args
         const url = t.url.replace(':id', String(id))
@@ -100,9 +123,9 @@ function buildServer(app: FastifyInstance) {
           url: t.method === 'GET' && query.size ? `${url}?${query}` : url,
           // Token interno de 1 min: as rotas continuam exigindo login normalmente.
           headers: { authorization: `Bearer ${app.jwt.sign({ sub: 'mcp' }, { expiresIn: '1m' })}` },
-          ...(t.method !== 'GET' && { payload: rest }),
+          ...((t.method === 'POST' || t.method === 'PATCH') && { payload: rest }),
         })
-        let data: unknown = res.body ? res.json() : null
+        let data: unknown = res.body ? res.json() : { ok: res.statusCode < 400 } // 204 do DELETE
         if (Array.isArray(data) && data.length > MAX_ROWS) data = { total: data.length, truncated: true, rows: data.slice(0, MAX_ROWS) }
         return { content: [{ type: 'text' as const, text: JSON.stringify(data) }], isError: res.statusCode >= 400 }
       },

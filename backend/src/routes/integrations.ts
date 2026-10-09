@@ -7,10 +7,14 @@ import {
   googleAccountsView,
   googleAuthUrlView,
   googleCallbackQuery,
+  googleCampaignsQuery,
+  googleCampaignsView,
   googleConfigView,
   googleCredentialsBody,
   mcpConfigView,
   metaAccountsView,
+  metaCampaignsQuery,
+  metaCampaignsView,
   metaConfigBody,
   metaConfigView,
   openAIConfigBody,
@@ -44,6 +48,11 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     { schema: { querystring: dateRangeQuery, response: { 200: metaAccountsView, 409: errorView, 502: errorView } } },
     controller.metaAccounts,
   )
+  app.get(
+    '/meta/campaigns',
+    { schema: { querystring: metaCampaignsQuery, response: { 200: metaCampaignsView, 409: errorView, 502: errorView } } },
+    controller.metaCampaigns,
+  )
   app.get('/integrations/google', { schema: { response: { 200: googleConfigView } } }, controller.showGoogle)
   app.put(
     '/integrations/google',
@@ -60,6 +69,11 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     '/google/accounts',
     { schema: { querystring: dateRangeQuery, response: { 200: googleAccountsView, 409: errorView, 502: errorView } } },
     controller.googleAccounts,
+  )
+  app.get(
+    '/google/campaigns',
+    { schema: { querystring: googleCampaignsQuery, response: { 200: googleCampaignsView, 404: errorView, 409: errorView, 502: errorView } } },
+    controller.googleCampaigns,
   )
   app.get('/integrations/mcp', { schema: { response: { 200: mcpConfigView } } }, controller.showMcp)
 }

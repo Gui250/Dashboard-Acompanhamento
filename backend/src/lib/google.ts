@@ -149,22 +149,19 @@ export type AdsMetricsRow = {
   conversionsValue?: number
 }
 
+const toMetrics = (m?: AdsMetricsRow) =>
+  withRatios({
+    spend: Number(m?.costMicros ?? 0) / 1_000_000,
+    impressions: Number(m?.impressions ?? 0),
+    clicks: Number(m?.clicks ?? 0),
+    conversions: m?.conversions ?? 0,
+    conversionsValue: m?.conversionsValue ?? 0,
+  })
+
 export function toAccount(a: AdsAccount, m?: AdsMetricsRow) {
   const status: 'ativa' | 'desativada' | 'outro' =
     a.status === 'ENABLED' ? 'ativa' : ['CANCELED', 'SUSPENDED', 'CLOSED'].includes(a.status) ? 'desativada' : 'outro'
-  return {
-    id: a.id,
-    name: a.name,
-    status,
-    currency: a.currency,
-    ...withRatios({
-      spend: Number(m?.costMicros ?? 0) / 1_000_000,
-      impressions: Number(m?.impressions ?? 0),
-      clicks: Number(m?.clicks ?? 0),
-      conversions: m?.conversions ?? 0,
-      conversionsValue: m?.conversionsValue ?? 0,
-    }),
-  }
+  return { id: a.id, name: a.name, status, currency: a.currency, ...toMetrics(m) }
 }
 
 type Account = ReturnType<typeof toAccount>
@@ -183,11 +180,28 @@ export function toTotals(accounts: Account[]) {
 
 type MetricsResult = { metrics?: AdsMetricsRow }
 
+const METRICS = 'metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value'
+const CAMPAIGN_STATUS = { ENABLED: 'ativa', PAUSED: 'pausada', REMOVED: 'removida' } as const
+
+type CampaignResult = { campaign: { id: string; name: string; status: string }; metrics?: AdsMetricsRow }
+
+// Desempenho por campanha de uma conta; sem segmentar por data, o Google já devolve uma linha por campanha.
+export async function campaignInsights(auth: AdsAuth, account: AdsAccount, from: string, to: string) {
+  const query = `SELECT campaign.id, campaign.name, campaign.status, ${METRICS} FROM campaign WHERE segments.date BETWEEN '${from}' AND '${to}'`
+  const rows = await search<CampaignResult>(auth, account.id, account.loginCustomerId, query)
+  return rows
+    .map(({ campaign: c, metrics }) => ({
+      id: c.id,
+      name: c.name,
+      status: CAMPAIGN_STATUS[c.status as keyof typeof CAMPAIGN_STATUS] ?? ('outro' as const),
+      ...toMetrics(metrics),
+    }))
+    .sort((a, b) => b.spend - a.spend)
+}
+
 // Métricas por conta em lotes de 10 chamadas paralelas. from/to já validados como YYYY-MM-DD.
 export async function accountInsights(auth: AdsAuth, accounts: AdsAccount[], from: string, to: string) {
-  const query =
-    'SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value ' +
-    `FROM customer WHERE segments.date BETWEEN '${from}' AND '${to}'`
+  const query = `SELECT ${METRICS} FROM customer WHERE segments.date BETWEEN '${from}' AND '${to}'`
   const out: Account[] = []
   for (let i = 0; i < accounts.length; i += 10) {
     const batch = accounts.slice(i, i + 10)

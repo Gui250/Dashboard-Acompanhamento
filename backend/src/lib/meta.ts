@@ -103,6 +103,19 @@ export function toTotals(accounts: Metrics[]): Metrics {
   })
 }
 
+type CampaignRow = InsightRow & { campaign_id: string; campaign_name: string }
+
+// Desempenho por campanha de uma conta (act_123 ou 123).
+export async function campaignInsights(token: string, accountId: string, since: string, until: string) {
+  const range = encodeURIComponent(JSON.stringify({ since, until }))
+  const act = `act_${accountId.replace(/^act_/, '')}`
+  const rows = await graphAll<CampaignRow>(
+    token,
+    `/${act}/insights?level=campaign&fields=campaign_id,campaign_name,spend,impressions,clicks,reach,actions&time_range=${range}&limit=500`,
+  )
+  return rows.map((r) => ({ id: r.campaign_id, name: r.campaign_name, ...toMetrics(r) })).sort((a, b) => b.spend - a.spend)
+}
+
 // Insights por conta em lotes de 10 chamadas paralelas.
 export async function accountInsights(token: string, accounts: AdAccount[], since: string, until: string) {
   const fields = 'spend,impressions,clicks,ctr,cpc,cpm,reach,actions'
