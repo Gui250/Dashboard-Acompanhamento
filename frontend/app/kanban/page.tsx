@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import { PageIntro } from "@/components/dashboard/dashboard-parts";
 import { CreateCreativeDialog } from "@/components/kanban/create-creative-dialog";
 import { CreativeDetailDialog } from "@/components/kanban/creative-detail-dialog";
+import { FunnelTabs } from "@/components/kanban/funnel-tabs";
 import { ProtectedCreativeImage } from "@/components/kanban/creative-image";
 import { Button } from "@/components/ui/button";
-import { ApiError, getCreatives, updateCreative, type Creative, type CreativeStage } from "@/lib/api";
+import { ApiError, getCreatives, getFunnels, updateCreative, type Creative, type CreativeStage, type Funnel } from "@/lib/api";
+import { useQuery } from "@/hooks/use-query";
 import { peekQuery, prefetchQuery, refreshQuery, setQueryData } from "@/lib/query-cache";
 import { cn } from "@/lib/utils";
 
@@ -22,8 +24,30 @@ const stages: { id: CreativeStage; label: string; color: string }[] = [
 
 type LoadError = { message: string; unavailable: boolean };
 
+const FUNNEL_KEY = "v4-dashboard-funnel";
+
+// Funil aberto por último neste navegador; sem ele (ou se sumiu), o primeiro.
+function useFunnel() {
+  const { data: funnels = [] } = useQuery("funnels", getFunnels);
+  const [chosen, setChosen] = useState<number | null>(() => {
+    try { return Number(localStorage.getItem(FUNNEL_KEY)) || null; } catch { return null; }
+  });
+  const current = funnels.find((f) => f.id === chosen)?.id ?? funnels[0]?.id ?? null;
+  function select(id: number) {
+    setChosen(id);
+    try { localStorage.setItem(FUNNEL_KEY, String(id)); } catch {}
+  }
+  function add(funnel: Funnel) {
+    setQueryData("funnels", [...funnels, funnel]);
+    select(funnel.id);
+  }
+  return { funnels, current, select, add };
+}
+
 export default function KanbanPage() {
-  const [cards, setCards] = useState<Creative[]>([]);
+  const funnel = useFunnel();
+  const [allCards, setCards] = useState<Creative[]>([]);
+  const cards = allCards.filter((card) => card.funnelId === funnel.current);
   const [selected, setSelected] = useState<Creative | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [highlighted, setHighlighted] = useState<CreativeStage | null>(null);
@@ -82,7 +106,7 @@ export default function KanbanPage() {
     const previous = cards.find((card) => card.id === id);
     if (!previous || previous.stage === stage) return;
 
-    const next = cards.map((card) => card.id === id ? { ...card, stage } : card);
+    const next = allCards.map((card) => card.id === id ? { ...card, stage } : card);
     commit(next);
     setSavingIds((current) => new Set(current).add(id));
     try {
@@ -109,16 +133,16 @@ export default function KanbanPage() {
   }
 
   function addCreative(creative: Creative) {
-    commit([...cards, creative]);
+    commit([...allCards, creative]);
   }
 
   function updateCard(creative: Creative) {
-    commit(cards.map((card) => card.id === creative.id ? creative : card));
+    commit(allCards.map((card) => card.id === creative.id ? creative : card));
     setSelected(creative);
   }
 
   function deleteCard(id: number) {
-    commit(cards.filter((card) => card.id !== id));
+    commit(allCards.filter((card) => card.id !== id));
     setSelected(null);
   }
 
@@ -128,8 +152,10 @@ export default function KanbanPage() {
         eyebrow="Esteira de criativos"
         title="Cada ideia no seu próximo passo."
         description="Organize a produção entre as etapas, acompanhe os responsáveis e visualize cada peça sem sair da esteira."
-        action={<CreateCreativeDialog onCreated={addCreative} />}
+        action={funnel.current !== null && <CreateCreativeDialog funnelId={funnel.current} onCreated={addCreative} />}
       />
+
+      <FunnelTabs funnels={funnel.funnels} value={funnel.current} onChange={funnel.select} onCreated={funnel.add} />
 
       {isLoading ? <KanbanSkeleton /> : loadError ? (
         <div className="rounded-lg border border-primary/20 bg-white p-6 shadow-panel">

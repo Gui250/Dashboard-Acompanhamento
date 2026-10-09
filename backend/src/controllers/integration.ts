@@ -205,7 +205,7 @@ export async function googleAuthUrl(_req: FastifyRequest, reply: FastifyReply) {
 }
 
 // Primeira origem do CORS = endereço do front.
-const webUrl = () => (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',')[0]
+export const webUrl = () => (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',')[0]
 
 // Volta do consentimento: rota pública (o navegador chega sem Bearer); o state assinado faz o papel do login.
 export async function googleCallback(req: FastifyRequest<{ Querystring: z.infer<typeof googleCallbackQuery> }>, reply: FastifyReply) {

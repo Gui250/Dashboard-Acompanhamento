@@ -5,7 +5,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
 import { createMetricBody, importContentBody, metricFilters, seriesQuery } from '../views/metric.js'
-import { createCreativeBody, updateCreativeBody } from '../views/creative.js'
+import { createCreativeBody, creativesQuery, funnelBody, updateCreativeBody } from '../views/creative.js'
 import { dateRangeQuery, googleCampaignsQuery, metaAdHiddenBody, metaAdParams, metaAdsQuery, metaCampaignsQuery } from '../views/integration.js'
 
 // Servidor MCP (Streamable HTTP) em /mcp. Cada tool repassa para uma rota REST via inject:
@@ -56,22 +56,38 @@ const TOOLS: Tool[] = [
     input: importContentBody,
   },
   {
-    name: 'list_creatives',
-    description: 'Lista os criativos do kanban (title, account, format, owner, stage).',
+    name: 'list_funnels',
+    description: 'Lista os funis (kanbans separados) com id e nome. Todo criativo pertence a um funil.',
     method: 'GET',
-    url: '/creatives',
+    url: '/funnels',
     input: z.object({}),
   },
   {
+    name: 'create_funnel',
+    description: 'Cria um funil (kanban novo, com as mesmas etapas). Nome único.',
+    method: 'POST',
+    url: '/funnels',
+    input: funnelBody,
+  },
+  {
+    name: 'list_creatives',
+    description: 'Lista os criativos do kanban (funnelId, title, account, format, owner, stage). funnelId opcional filtra por funil.',
+    method: 'GET',
+    url: '/creatives',
+    input: creativesQuery,
+  },
+  {
     name: 'create_creative',
-    description: 'Cria um criativo no kanban. stage padrão: briefing.',
+    description:
+      'Cria um criativo no kanban de um funil (funnelId de list_funnels). stage padrão: briefing. ' +
+      'Entrar em revisao manda e-mail de aprovação para flaviasobral@v4.company.',
     method: 'POST',
     url: '/creatives',
     input: createCreativeBody,
   },
   {
     name: 'update_creative',
-    description: 'Atualiza campos de um criativo pelo id (ex.: mover de etapa com stage).',
+    description: 'Atualiza campos de um criativo pelo id (ex.: mover de etapa com stage, trocar de funil com funnelId). Mover para revisao manda e-mail de aprovação para flaviasobral@v4.company.',
     method: 'PATCH',
     url: '/creatives/:id',
     input: updateCreativeBody.extend({ id: z.number().int().positive() }),

@@ -13,7 +13,7 @@ import { createCreative, uploadCreativeImage, type Creative } from "@/lib/api";
 
 const defaults: CreativeFormValues = { title: "", account: "", format: "Carrossel", owner: "", stage: "briefing" };
 
-export function CreateCreativeDialog({ onCreated }: { onCreated: (creative: Creative) => void }) {
+export function CreateCreativeDialog({ funnelId, onCreated }: { funnelId: number; onCreated: (creative: Creative) => void }) {
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export function CreateCreativeDialog({ onCreated }: { onCreated: (creative: Crea
   async function submit(values: CreativeFormValues) {
     setApiError(null);
     try {
-      let creative = await createCreative(values);
+      let creative = await createCreative({ ...values, funnelId });
       let imageFailed = false;
       if (file) {
         try {

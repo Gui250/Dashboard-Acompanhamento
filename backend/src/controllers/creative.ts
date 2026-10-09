@@ -2,16 +2,49 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { z } from 'zod'
 import {
   createCreative,
+  createFunnel,
+  creativeStage,
   deleteCreative,
   findCreativeImage,
+  findFunnel,
   listCreatives,
+  listFunnels,
   setCreativeImage,
   updateCreative,
 } from '../models/creative.js'
-import type { createCreativeBody, creativeParams, updateCreativeBody } from '../views/creative.js'
+import { escapeHtml, sendEmail } from '../lib/email.js'
+import { webUrl } from './integration.js'
+import type { createCreativeBody, creativeParams, creativesQuery, funnelBody, updateCreativeBody } from '../views/creative.js'
 
 type Params = { Params: z.infer<typeof creativeParams> }
 const notFound = { message: 'Criativo não encontrado.' }
+const noFunnel = { message: 'Funil não encontrado.' }
+
+// Quem aprova os criativos: recebe um e-mail quando um card entra em Revisão.
+const APPROVER = 'flaviasobral@v4.company'
+
+type Row = NonNullable<Awaited<ReturnType<typeof updateCreative>>>
+
+async function notifyApproval(c: Row) {
+  const funnel = await findFunnel(c.funnelId)
+  const rows = [['Funil', funnel?.name ?? '-'], ['Conta', c.account], ['Formato', c.format], ['Responsável', c.owner]]
+  return sendEmail({
+    to: APPROVER,
+    subject: `Criativo aguardando aprovação: ${c.title}`,
+    html:
+      `<p>O criativo <strong>${escapeHtml(c.title)}</strong> entrou em <strong>Revisão</strong> e precisa da sua aprovação.</p>` +
+      `<ul>${rows.map(([k, v]) => `<li>${k}: ${escapeHtml(v)}</li>`).join('')}</ul>` +
+      `<p><a href="${webUrl()}/kanban">Abrir o kanban</a></p>`,
+  })
+}
+
+// Fora do caminho da resposta: falha no e-mail vai para o log e não desfaz a mudança no kanban.
+function notifyIfReview(req: FastifyRequest, c: Row, before?: string) {
+  if (c.stage !== 'revisao' || before === 'revisao') return
+  notifyApproval(c)
+    .then((sent) => sent || req.log.warn('e-mail de aprovação não enviado: faltam RESEND_API_KEY e RESEND_FROM'))
+    .catch((e) => req.log.error(e, 'falha ao enviar e-mail de aprovação'))
+}
 
 // Tipo real pela assinatura do arquivo; o mimetype enviado não é confiável. SVG nunca passa.
 function imageType(buf: Buffer) {
@@ -21,16 +54,33 @@ function imageType(buf: Buffer) {
   if (buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp'
 }
 
-export function list() {
-  return listCreatives()
+export function list(req: FastifyRequest<{ Querystring: z.infer<typeof creativesQuery> }>) {
+  return listCreatives(req.query.funnelId)
 }
 
 export async function create(req: FastifyRequest<{ Body: z.infer<typeof createCreativeBody> }>, reply: FastifyReply) {
-  return reply.status(201).send(await createCreative(req.body))
+  if (!(await findFunnel(req.body.funnelId))) return reply.status(400).send(noFunnel)
+  const row = await createCreative(req.body)
+  notifyIfReview(req, row)
+  return reply.status(201).send(row)
 }
 
 export async function update(req: FastifyRequest<Params & { Body: z.infer<typeof updateCreativeBody> }>, reply: FastifyReply) {
-  return (await updateCreative(req.params.id, req.body)) ?? reply.status(404).send(notFound)
+  if (req.body.funnelId && !(await findFunnel(req.body.funnelId))) return reply.status(400).send(noFunnel)
+  const before = req.body.stage === 'revisao' ? await creativeStage(req.params.id) : undefined
+  const row = await updateCreative(req.params.id, req.body)
+  if (!row) return reply.status(404).send(notFound)
+  notifyIfReview(req, row, before)
+  return row
+}
+
+export function funnels() {
+  return listFunnels()
+}
+
+export async function addFunnel(req: FastifyRequest<{ Body: z.infer<typeof funnelBody> }>, reply: FastifyReply) {
+  const row = await createFunnel(req.body.name)
+  return row ? reply.status(201).send(row) : reply.status(409).send({ message: 'Já existe um funil com esse nome.' })
 }
 
 export async function remove(req: FastifyRequest<Params>, reply: FastifyReply) {

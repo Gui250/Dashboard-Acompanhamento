@@ -20,8 +20,11 @@ export type DashboardSnapshot = {
 
 export type CreativeStage = "briefing" | "producao" | "revisao" | "aprovado" | "publicado";
 
+export type Funnel = { id: number; name: string };
+
 export type Creative = {
   id: number;
+  funnelId: number;
   title: string;
   account: string;
   format: string;
@@ -32,7 +35,7 @@ export type Creative = {
   updatedAt: string;
 };
 
-export type CreateCreativeInput = Pick<Creative, "title" | "account" | "format" | "owner"> & {
+export type CreateCreativeInput = Pick<Creative, "funnelId" | "title" | "account" | "format" | "owner"> & {
   stage?: CreativeStage;
 };
 
@@ -161,6 +164,14 @@ export function importMetrics(file: File) {
 
 export function getCreatives() {
   return apiRequest<Creative[]>("/creatives", undefined, true);
+}
+
+export function getFunnels() {
+  return apiRequest<Funnel[]>("/funnels", undefined, true);
+}
+
+export function createFunnel(name: string) {
+  return apiRequest<Funnel>("/funnels", { method: "POST", body: JSON.stringify({ name }) }, true);
 }
 
 export function createCreative(input: CreateCreativeInput) {
