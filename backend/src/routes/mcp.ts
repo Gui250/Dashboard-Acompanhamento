@@ -51,7 +51,7 @@ const TOOLS: Tool[] = [
     name: 'import_metrics_sheet',
     description:
       'Importa uma planilha de métricas. Colunas (cabeçalho na 1ª linha): secao (comercial|operacional), metrica, dimensao (opcional), valor, data (AAAA-MM-DD ou DD/MM/AAAA). ' +
-      'format=csv: content é o texto CSV (separador , ou ;). format=xlsx: content é o arquivo em base64 (lê a 1ª aba). ' +
+      'format=csv: content é o texto CSV (separador , ou ;). format=xlsx: content é o arquivo em base64; lê as abas Comercial e Operacional do modelo (sem coluna secao; no Comercial a dimensao se chama vendedor) ou, se não houver, a 1ª aba com essas colunas. ' +
       'Se a planilha do usuário tiver outro layout, converta para essas colunas em CSV antes. Tudo ou nada: com qualquer linha inválida nada é gravado e voltam os erros por linha.',
     method: 'POST',
     url: '/metrics/import/content',
@@ -90,7 +90,7 @@ const TOOLS: Tool[] = [
     description:
       'Cria o modelo de planilha de métricas para preencher e importar (depois, com import_metrics_sheet). ' +
       'Sem keys: modelo com linhas de exemplo. Com keys (+ section): uma linha por métrica × dimensão (dimensions, opcional) com o valor em branco e a data (date, opcional) já preenchida. ' +
-      'format=csv devolve o texto; xlsx devolve o arquivo (com aba de instruções). Os dois vêm com o link de download.',
+      'format=csv devolve o texto; xlsx devolve o arquivo formatado (abas Comercial e Operacional, com lista de métricas, e aba de instruções). Os dois vêm com o link de download.',
     method: 'GET',
     url: '/metrics/template',
     input: templateTool,

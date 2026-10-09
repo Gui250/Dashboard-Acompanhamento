@@ -39,7 +39,9 @@ const notFound = { message: 'Criativo não encontrado.' }
 const noFunnel = { message: 'Funil não encontrado.' }
 
 // Quem aprova os criativos: recebe o e-mail com Aprovar / Pedir ajustes quando um card vai para Revisão.
-const APPROVER = 'flaviasobral@v4company.com'
+const APPROVER = ['flaviasobral@v4company.com']
+// Resposta da aprovadora vai para quem envia os criativos.
+const REPLY_TO = ['guilherme.soaresmoreno@v4company.com', 'cauan.silveira@v4company.com']
 const noResend = 'E-mail não configurado: faltam RESEND_API_KEY e RESEND_FROM no servidor.'
 
 type Row = NonNullable<Awaited<ReturnType<typeof updateCreative>>>
@@ -60,7 +62,7 @@ async function notifyApproval(c: Row) {
     imageUrl: c.hasImage ? `${apiUrl()}/approvals/${token}/image` : null,
     reviewUrl: `${webUrl()}/aprovacao/${token}`,
   })
-  return sendEmail({ to: APPROVER, ...mail })
+  return sendEmail({ to: APPROVER, reply_to: REPLY_TO, ...mail })
 }
 
 // Arrastar para Revisão também avisa. Fora do caminho da resposta: falha no e-mail vai para o log e não desfaz o movimento.

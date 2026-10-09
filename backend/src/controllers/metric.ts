@@ -44,11 +44,10 @@ async function importRows(rows: ReturnType<typeof parseMetricsSheet>, reply: Fas
 
   const valid: z.infer<typeof createMetricBody>[] = []
   const errors: { line: number; message: string }[] = []
-  rows.forEach((row, i) => {
+  rows.forEach((row) => {
     const parsed = createMetricBody.safeParse(row)
     if (parsed.success) valid.push(parsed.data)
-    // +2: linha 1 é o cabeçalho e a planilha começa em 1
-    else errors.push({ line: i + 2, message: parsed.error.issues.map((e) => `${COLUMN_OF[String(e.path[0])] ?? e.path.join('.')}: ${e.message}`).join('; ') })
+    else errors.push({ line: row.line, message: (row.sheet ? `aba ${row.sheet} · ` : '') + parsed.error.issues.map((e) => `${COLUMN_OF[String(e.path[0])] ?? e.path.join('.')}: ${e.message}`).join('; ') })
   })
   // Tudo ou nada: com qualquer linha inválida, nada é gravado.
   if (errors.length) return reply.status(400).send({ message: 'Planilha com linhas inválidas.', errors })
@@ -57,10 +56,10 @@ async function importRows(rows: ReturnType<typeof parseMetricsSheet>, reply: Fas
   return reply.status(201).send({ imported: valid.length })
 }
 
-export function template(req: FastifyRequest<{ Querystring: z.infer<typeof templateQuery> }>, reply: FastifyReply) {
+export async function template(req: FastifyRequest<{ Querystring: z.infer<typeof templateQuery> }>, reply: FastifyReply) {
   const { format, ...prefill } = req.query
   return reply
     .header('content-type', format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     .header('content-disposition', `attachment; filename="template-metricas.${format}"`)
-    .send(metricsTemplate(format, templateRows(prefill)))
+    .send(await metricsTemplate(format, templateRows(prefill)))
 }
