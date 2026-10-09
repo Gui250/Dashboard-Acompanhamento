@@ -1,22 +1,24 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { GoogleAuth, OAuth2Client, type JWTInput } from 'google-auth-library'
 import { withRatios } from './meta.js'
 
-// Cliente mínimo da Google Ads API (REST) + OAuth do Google, só com fetch. Token sempre no header.
+// Autenticação pela lib oficial do Google (google-auth-library); a Google Ads API em si é REST via fetch.
 // v25 = major de julho/2026; cada major vive ~1 ano (developers.google.com/google-ads/api/docs/sunset-dates).
 const ADS = 'https://googleads.googleapis.com/v25'
-const SCOPES = 'https://www.googleapis.com/auth/adwords openid email'
+const SCOPE = 'https://www.googleapis.com/auth/adwords'
 
 export class GoogleError extends Error {}
 
-const env = () => ({
+const oauthEnv = () => ({
   clientId: process.env.GOOGLE_CLIENT_ID!,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
   redirectUri: process.env.GOOGLE_REDIRECT_URI!,
-  developerToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
 })
 
-// Sem as 4 variáveis o servidor não oferece a integração.
-export const googleEnabled = () => Object.values(env()).every(Boolean)
+// Sem as 3 variáveis o botão "Conectar com o Google" (OAuth) não aparece; credenciais diretas seguem valendo.
+export const oauthEnabled = () => Object.values(oauthEnv()).every(Boolean)
+
+const oauthClient = () => new OAuth2Client(oauthEnv())
 
 // --- OAuth ---
 // state = "expira.assinatura": só quem pediu a URL logado no app consegue um state válido (10 min).
@@ -34,54 +36,59 @@ export function validState(state: string, now = Date.now()) {
 }
 
 // prompt=consent garante refresh_token mesmo em reconexões.
-export function authUrl() {
-  const { clientId, redirectUri } = env()
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: SCOPES,
-    access_type: 'offline',
-    prompt: 'consent',
-    state: makeState(),
-  })
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
-}
-
-type TokenResponse = { access_token?: string; refresh_token?: string; id_token?: string; error?: string; error_description?: string }
-
-async function oauthToken(params: Record<string, string>) {
-  const { clientId, clientSecret } = env()
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, ...params }),
-  })
-  const body = (await res.json().catch(() => ({}))) as TokenResponse
-  if (!res.ok || !body.access_token) throw new GoogleError(body.error_description ?? body.error ?? `OAuth do Google respondeu ${res.status}`)
-  return body
-}
+export const authUrl = () =>
+  oauthClient().generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: [SCOPE, 'openid', 'email'], state: makeState() })
 
 export async function exchangeCode(code: string) {
-  const t = await oauthToken({ grant_type: 'authorization_code', code, redirect_uri: env().redirectUri })
-  if (!t.refresh_token) throw new GoogleError('O Google não devolveu refresh token; conecte de novo.')
-  // id_token veio direto do Google por TLS: dá para ler o payload sem verificar a assinatura.
-  const claims = t.id_token ? JSON.parse(Buffer.from(t.id_token.split('.')[1], 'base64url').toString()) : {}
-  return { refreshToken: t.refresh_token, email: (claims.email as string | undefined) ?? null }
+  const client = oauthClient()
+  const { tokens } = await client.getToken(code)
+  if (!tokens.refresh_token) throw new GoogleError('O Google não devolveu refresh token; conecte de novo.')
+  const ticket = tokens.id_token ? await client.verifyIdToken({ idToken: tokens.id_token, audience: oauthEnv().clientId }) : null
+  return { refreshToken: tokens.refresh_token, email: ticket?.getPayload()?.email ?? null }
 }
 
-// ponytail: troca o refresh token a cada consulta (1 chamada extra); cachear o access token (1h) se pesar.
-export const accessToken = async (refreshToken: string) =>
-  (await oauthToken({ grant_type: 'refresh_token', refresh_token: refreshToken })).access_token!
+// --- De onde vem o acesso ---
+// Ordem: JSON colado no painel > login OAuth > credenciais padrão do servidor (ADC: GOOGLE_APPLICATION_CREDENTIALS,
+// `gcloud auth application-default login` ou a conta de serviço da máquina no GCP).
+export type GoogleSource = 'credenciais' | 'oauth' | 'direto'
+
+export function googleAuth(credentials: JWTInput | null, refreshToken: string | null): { source: GoogleSource; auth: GoogleAuth } {
+  if (credentials) return { source: 'credenciais', auth: new GoogleAuth({ scopes: SCOPE, credentials }) }
+  if (refreshToken) {
+    const { clientId, clientSecret } = oauthEnv()
+    const user = { type: 'authorized_user', client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }
+    return { source: 'oauth', auth: new GoogleAuth({ scopes: SCOPE, credentials: user }) }
+  }
+  return { source: 'direto', auth: new GoogleAuth({ scopes: SCOPE }) }
+}
+
+// ponytail: GoogleAuth novo por consulta = token novo a cada vez; reaproveitar a instância (cache de 1h da lib) se pesar.
+export async function accessToken(auth: GoogleAuth) {
+  const token = await auth.getAccessToken().catch((e: Error) => {
+    throw new GoogleError(`Não foi possível autenticar no Google: ${e.message}`)
+  })
+  if (!token) throw new GoogleError('O Google não devolveu access token.')
+  return token
+}
+
+// ADC disponível? Devolve o e-mail da conta de serviço (null para login de usuário via gcloud); undefined = sem ADC.
+export const directIdentity = (auth: GoogleAuth) =>
+  accessToken(auth).then(
+    () => auth.getCredentials().then((c) => c.client_email ?? null, () => null),
+    () => undefined,
+  )
 
 // --- Google Ads ---
 type AdsError = { error?: { message?: string; details?: { errors?: { message?: string }[] }[] } }
 
-async function ads<T>(token: string, path: string, opts: { loginCustomerId?: string; query?: string } = {}): Promise<T> {
+export type AdsAuth = { token: string; developerToken: string }
+
+async function ads<T>({ token, developerToken }: AdsAuth, path: string, opts: { loginCustomerId?: string; query?: string } = {}): Promise<T> {
   const res = await fetch(ADS + path, {
     method: opts.query ? 'POST' : 'GET',
     headers: {
       authorization: `Bearer ${token}`,
-      'developer-token': env().developerToken,
+      'developer-token': developerToken,
       ...(opts.loginCustomerId && { 'login-customer-id': opts.loginCustomerId }),
       ...(opts.query && { 'content-type': 'application/json' }),
     },
@@ -97,8 +104,8 @@ async function ads<T>(token: string, path: string, opts: { loginCustomerId?: str
 }
 
 // searchStream: uma chamada só, sem paginação; a resposta vem em lotes.
-async function search<T>(token: string, customerId: string, loginCustomerId: string, query: string) {
-  const batches = await ads<{ results?: T[] }[]>(token, `/customers/${customerId}/googleAds:searchStream`, { loginCustomerId, query })
+async function search<T>(a: AdsAuth, customerId: string, loginCustomerId: string, query: string) {
+  const batches = await ads<{ results?: T[] }[]>(a, `/customers/${customerId}/googleAds:searchStream`, { loginCustomerId, query })
   return batches.flatMap((b) => b.results ?? [])
 }
 
@@ -107,13 +114,16 @@ type CustomerClientRow = { customerClient: { id: string; descriptiveName?: strin
 
 // Contas de anúncio (não-MCC) que o usuário alcança: as de acesso direto e as filhas de cada MCC.
 // customer_client inclui a própria conta (nível 0), então conta avulsa também aparece.
-export async function listAccounts(token: string): Promise<AdsAccount[]> {
-  const { resourceNames = [] } = await ads<{ resourceNames?: string[] }>(token, '/customers:listAccessibleCustomers')
+// Também valida token + developer token antes de salvar credenciais.
+export const accessibleCustomers = (a: AdsAuth) => ads<{ resourceNames?: string[] }>(a, '/customers:listAccessibleCustomers')
+
+export async function listAccounts(a: AdsAuth): Promise<AdsAccount[]> {
+  const { resourceNames = [] } = await accessibleCustomers(a)
   const roots = resourceNames.map((r) => r.split('/')[1])
   const query =
     'SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.status ' +
     'FROM customer_client WHERE customer_client.manager = false'
-  const settled = await Promise.allSettled(roots.map((root) => search<CustomerClientRow>(token, root, root, query)))
+  const settled = await Promise.allSettled(roots.map((root) => search<CustomerClientRow>(a, root, root, query)))
   const accounts = settled.flatMap((s, i) =>
     s.status === 'fulfilled'
       ? s.value.map(({ customerClient: c }) => ({
@@ -174,7 +184,7 @@ export function toTotals(accounts: Account[]) {
 type MetricsResult = { metrics?: AdsMetricsRow }
 
 // Métricas por conta em lotes de 10 chamadas paralelas. from/to já validados como YYYY-MM-DD.
-export async function accountInsights(token: string, accounts: AdsAccount[], from: string, to: string) {
+export async function accountInsights(auth: AdsAuth, accounts: AdsAccount[], from: string, to: string) {
   const query =
     'SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value ' +
     `FROM customer WHERE segments.date BETWEEN '${from}' AND '${to}'`
@@ -183,7 +193,7 @@ export async function accountInsights(token: string, accounts: AdsAccount[], fro
     const batch = accounts.slice(i, i + 10)
     const rows = await Promise.all(
       // ponytail: conta que recusa a consulta (cancelada, sem permissão) aparece zerada; expor o erro por conta se confundir.
-      batch.map((a) => search<MetricsResult>(token, a.id, a.loginCustomerId, query).catch((): MetricsResult[] => [])),
+      batch.map((a) => search<MetricsResult>(auth, a.id, a.loginCustomerId, query).catch((): MetricsResult[] => [])),
     )
     batch.forEach((a, j) => out.push(toAccount(a, rows[j][0]?.metrics)))
   }

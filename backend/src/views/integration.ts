@@ -60,13 +60,19 @@ export const metaAccountsView = z.object({
   ),
 })
 
-// --- Google Ads --- refresh token nunca volta ao cliente.
-// enabled = servidor tem as variáveis GOOGLE_*; connected = alguém já fez o login Google.
+// --- Google Ads --- refresh token, JSON de credenciais e developer token nunca voltam ao cliente.
+// oauth = servidor tem GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI; source null = sem acesso ao Google.
 export const googleConfigView = z.object({
-  enabled: z.boolean(),
-  connected: z.boolean(),
+  oauth: z.boolean(),
+  developerToken: z.boolean(),
+  source: z.enum(['credenciais', 'oauth', 'direto']).nullable(),
   email: z.string().nullable(),
 })
+
+// Campos omitidos = mantém o salvo.
+export const googleCredentialsBody = z
+  .object({ credentials: z.string().trim().min(1).optional(), developerToken: z.string().trim().min(1).optional() })
+  .refine((b) => b.credentials || b.developerToken, 'Informe as credenciais ou o developer token.')
 
 export const googleAuthUrlView = z.object({ url: z.string() })
 

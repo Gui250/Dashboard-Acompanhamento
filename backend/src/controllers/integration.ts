@@ -1,10 +1,13 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { z } from 'zod'
+import type { JWTInput } from 'google-auth-library'
 import {
+  clearGoogleConnection,
   getGoogleConfig,
   getMetaConfig,
   getOpenAIConfig,
   saveGoogleConfig,
+  saveGoogleCredentials,
   saveMetaConfig,
   saveOpenAIConfig,
 } from '../models/setting.js'
@@ -13,6 +16,7 @@ import * as google from '../lib/google.js'
 import type {
   dateRangeQuery,
   googleCallbackQuery,
+  googleCredentialsBody,
   metaConfigBody,
   openAIConfigBody,
   openAIModelsBody,
@@ -103,17 +107,64 @@ export async function metaAccounts(req: FastifyRequest<{ Querystring: z.infer<ty
   }
 }
 
-// --- Google Ads (OAuth: o usuário faz login no Google e autoriza o app) ---
-const googleOff = { message: 'Google Ads não está habilitado no servidor (faltam as variáveis GOOGLE_*).' }
+// --- Google Ads: credenciais padrão do servidor (ADC), JSON colado no painel ou login OAuth ---
+// Developer token salvo no painel vale mais que o do env.
+async function googleConn() {
+  const s = await getGoogleConfig()
+  const credentials = s.credentials ? (JSON.parse(s.credentials) as JWTInput) : null
+  return {
+    ...google.googleAuth(credentials, s.refreshToken),
+    email: credentials ? (credentials.client_email ?? null) : s.email,
+    developerToken: s.developerToken || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || null,
+  }
+}
 
 export async function showGoogle() {
-  const config = await getGoogleConfig()
-  return { enabled: google.googleEnabled(), connected: !!config, email: config?.email ?? null }
+  const c = await googleConn()
+  // Nada salvo: só conta como conectado se o servidor achar credenciais padrão.
+  const direct = c.source === 'direto' ? await google.directIdentity(c.auth) : null
+  const connected = c.source !== 'direto' || direct !== undefined
+  return {
+    oauth: google.oauthEnabled(),
+    developerToken: !!c.developerToken,
+    source: connected ? c.source : null,
+    email: direct ?? c.email,
+  }
+}
+
+const noDevToken = { message: 'Informe o developer token do Google Ads em Integrações.' }
+
+// Testa (autentica + lista as contas acessíveis) antes de salvar.
+export async function saveGoogle(req: FastifyRequest<{ Body: z.infer<typeof googleCredentialsBody> }>, reply: FastifyReply) {
+  const { credentials, developerToken } = req.body
+  let parsed: JWTInput | null = null
+  if (credentials) {
+    try {
+      parsed = JSON.parse(credentials)
+    } catch {}
+    if (typeof parsed?.type !== 'string') return reply.status(400).send({ message: 'Cole o JSON de credenciais do Google (ex.: chave da conta de serviço).' })
+  }
+  const s = await getGoogleConfig()
+  const devToken = developerToken ?? s.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN
+  if (!devToken) return reply.status(409).send(noDevToken)
+  const { auth } = parsed ? google.googleAuth(parsed, null) : await googleConn()
+  try {
+    await google.accessibleCustomers({ token: await google.accessToken(auth), developerToken: devToken })
+  } catch (e) {
+    return reply.status(400).send({ message: e instanceof google.GoogleError ? e.message : 'Credenciais do Google inválidas.' })
+  }
+  await saveGoogleCredentials({ credentials, developerToken })
+  return showGoogle()
+}
+
+export async function disconnectGoogle() {
+  await clearGoogleConnection()
+  return showGoogle()
 }
 
 // O front busca a URL (com o Bearer) e manda o navegador para ela.
 export async function googleAuthUrl(_req: FastifyRequest, reply: FastifyReply) {
-  if (!google.googleEnabled()) return reply.status(409).send(googleOff)
+  if (!google.oauthEnabled()) return reply.status(409).send({ message: 'Login com o Google não está habilitado no servidor (faltam GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI).' })
   return { url: google.authUrl() }
 }
 
@@ -136,14 +187,13 @@ export async function googleCallback(req: FastifyRequest<{ Querystring: z.infer<
 }
 
 export async function googleAccounts(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
-  if (!google.googleEnabled()) return reply.status(409).send(googleOff)
-  const config = await getGoogleConfig()
-  if (!config) return reply.status(409).send({ message: 'Conecte o Google Ads em Integrações.' })
+  const c = await googleConn()
+  if (!c.developerToken) return reply.status(409).send(noDevToken)
   const { from, to } = range(req.query)
   try {
-    const token = await google.accessToken(config.refreshToken)
-    const accounts = await google.accountInsights(token, await google.listAccounts(token), from, to)
-    return { email: config.email, from, to, totals: google.toTotals(accounts), accounts }
+    const auth = { token: await google.accessToken(c.auth), developerToken: c.developerToken }
+    const accounts = await google.accountInsights(auth, await google.listAccounts(auth), from, to)
+    return { email: c.email, from, to, totals: google.toTotals(accounts), accounts }
   } catch (e) {
     return reply.status(502).send({ message: e instanceof google.GoogleError ? e.message : 'Falha ao consultar o Google Ads.' })
   }

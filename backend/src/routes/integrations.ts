@@ -8,6 +8,7 @@ import {
   googleAuthUrlView,
   googleCallbackQuery,
   googleConfigView,
+  googleCredentialsBody,
   mcpConfigView,
   metaAccountsView,
   metaConfigBody,
@@ -44,6 +45,12 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     controller.metaAccounts,
   )
   app.get('/integrations/google', { schema: { response: { 200: googleConfigView } } }, controller.showGoogle)
+  app.put(
+    '/integrations/google',
+    { schema: { body: googleCredentialsBody, response: { 200: googleConfigView, 400: errorView, 409: errorView } } },
+    controller.saveGoogle,
+  )
+  app.delete('/integrations/google', { schema: { response: { 200: googleConfigView } } }, controller.disconnectGoogle)
   app.get(
     '/integrations/google/auth-url',
     { schema: { response: { 200: googleAuthUrlView, 409: errorView } } },

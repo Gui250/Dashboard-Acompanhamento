@@ -260,8 +260,13 @@ export function getMetaAccounts(from?: string, to?: string) {
   return apiRequest<MetaAccountsReport>(`/meta/accounts?${rangeParams(from, to)}`, undefined, true);
 }
 
-// enabled = servidor tem as variáveis GOOGLE_*; connected = alguém já autorizou com a conta Google.
-export type GoogleConfig = { enabled: boolean; connected: boolean; email: string | null };
+// oauth = servidor tem o OAuth client do Google; source = de onde vem o acesso (null = sem acesso).
+export type GoogleConfig = {
+  oauth: boolean;
+  developerToken: boolean;
+  source: "credenciais" | "oauth" | "direto" | null;
+  email: string | null;
+};
 
 export type GoogleAccount = {
   id: string;
@@ -288,6 +293,14 @@ export type GoogleAccountsReport = {
 
 export function getGoogleConfig() {
   return apiRequest<GoogleConfig>("/integrations/google", undefined, true);
+}
+
+export function saveGoogleCredentials(input: { credentials?: string; developerToken?: string }) {
+  return apiRequest<GoogleConfig>("/integrations/google", { method: "PUT", body: JSON.stringify(input) }, true);
+}
+
+export function disconnectGoogle() {
+  return apiRequest<GoogleConfig>("/integrations/google", { method: "DELETE" }, true);
 }
 
 export function getGoogleAuthUrl() {

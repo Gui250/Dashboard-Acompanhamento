@@ -73,16 +73,40 @@ export async function saveMetaConfig({ accessToken, businessId }: { accessToken?
 
 const GOOGLE_TOKEN = 'google_refresh_token'
 const GOOGLE_EMAIL = 'google_email'
+const GOOGLE_CREDENTIALS = 'google_credentials'
+const GOOGLE_DEV_TOKEN = 'google_developer_token'
 
-// null = Google Ads ainda não conectado.
-export async function getGoogleConfig(): Promise<{ refreshToken: string; email: string | null } | null> {
-  const s = await read([GOOGLE_TOKEN, GOOGLE_EMAIL])
-  return s[GOOGLE_TOKEN] ? { refreshToken: decrypt(s[GOOGLE_TOKEN]), email: s[GOOGLE_EMAIL] || null } : null
+// Tudo opcional: sem nada salvo, o backend tenta as credenciais padrão do servidor (ADC).
+export async function getGoogleConfig() {
+  const s = await read([GOOGLE_TOKEN, GOOGLE_EMAIL, GOOGLE_CREDENTIALS, GOOGLE_DEV_TOKEN])
+  const secret = (k: string) => (s[k] ? decrypt(s[k]) : null)
+  return {
+    refreshToken: secret(GOOGLE_TOKEN),
+    email: s[GOOGLE_EMAIL] || null,
+    credentials: secret(GOOGLE_CREDENTIALS), // JSON (conta de serviço etc.) colado no painel
+    developerToken: secret(GOOGLE_DEV_TOKEN),
+  }
 }
 
+const remove = (keys: string[]) => db.delete(settings).where(inArray(settings.key, keys))
+
+// Login OAuth e JSON colado se substituem: o último a ser configurado vale.
 export async function saveGoogleConfig({ refreshToken, email }: { refreshToken: string; email: string | null }) {
   await upsert([
     { key: GOOGLE_TOKEN, value: encrypt(refreshToken) },
     { key: GOOGLE_EMAIL, value: email ?? '' },
   ])
+  await remove([GOOGLE_CREDENTIALS])
 }
+
+// Campos omitidos = mantém o que já está salvo.
+export async function saveGoogleCredentials({ credentials, developerToken }: { credentials?: string; developerToken?: string }) {
+  const rows = []
+  if (credentials) rows.push({ key: GOOGLE_CREDENTIALS, value: encrypt(credentials) })
+  if (developerToken) rows.push({ key: GOOGLE_DEV_TOKEN, value: encrypt(developerToken) })
+  if (rows.length) await upsert(rows)
+  if (credentials) await remove([GOOGLE_TOKEN, GOOGLE_EMAIL])
+}
+
+// Desconectar = volta para as credenciais padrão do servidor; o developer token fica.
+export const clearGoogleConnection = () => remove([GOOGLE_TOKEN, GOOGLE_EMAIL, GOOGLE_CREDENTIALS])
