@@ -78,8 +78,9 @@ export async function saveMeta(req: FastifyRequest<{ Body: z.infer<typeof metaCo
   const { accessToken, businessId } = req.body
   const token = accessToken ?? (await getMetaConfig())?.accessToken
   if (!token) return reply.status(409).send({ message: 'Informe um token da Meta.' })
+  // Lista as contas, não só a BM: ler a BM passa sem business_management, listar as contas não.
   try {
-    await getBusiness(token, businessId)
+    await listBusinessAdAccounts(token, businessId)
   } catch (e) {
     return reply.status(400).send({ message: e instanceof MetaError ? `${invalidMeta.message} ${e.message}` : invalidMeta.message })
   }
