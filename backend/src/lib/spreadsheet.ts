@@ -35,10 +35,10 @@ function toIsoDate(v: unknown) {
   return br ? `${br[3]}-${br[2]}-${br[1]}` : s
 }
 
-// Lê a primeira aba (xlsx) ou o csv (separador , ou ; detectado automaticamente).
+// Lê a primeira aba (xlsx) ou o csv (separador , ou ; detectado automaticamente); string = texto CSV.
 // Retorna objetos crus no formato da API; a validação fica com o zod.
-export function parseMetricsSheet(buffer: Buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer', raw: true })
+export function parseMetricsSheet(input: Buffer | string) {
+  const wb = XLSX.read(input, { type: typeof input === 'string' ? 'string' : 'buffer', raw: true })
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: '' })
   return rows.map((row) => {
     const r = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.trim().toLowerCase(), v]))

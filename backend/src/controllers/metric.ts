@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { z } from 'zod'
 import { COLUMN_OF, parseMetricsSheet, metricsTemplate } from '../lib/spreadsheet.js'
 import { createMetric, createMetrics, listMetrics, metricSeries } from '../models/metric.js'
-import { createMetricBody, type dashboardQuery, type metricFilters, type seriesQuery } from '../views/metric.js'
+import { createMetricBody, type dashboardQuery, type importContentBody, type metricFilters, type seriesQuery } from '../views/metric.js'
 
 export async function create(req: FastifyRequest<{ Body: z.infer<typeof createMetricBody> }>, reply: FastifyReply) {
   return reply.status(201).send(await createMetric(req.body))
@@ -31,7 +31,15 @@ export async function importSheet(req: FastifyRequest, reply: FastifyReply) {
   if (!file || !/\.(xlsx|csv)$/i.test(file.filename)) {
     return reply.status(400).send({ message: 'Envie um arquivo .xlsx ou .csv no campo "file".' })
   }
-  const rows = parseMetricsSheet(await file.toBuffer())
+  return importRows(parseMetricsSheet(await file.toBuffer()), reply)
+}
+
+export function importContent(req: FastifyRequest<{ Body: z.infer<typeof importContentBody> }>, reply: FastifyReply) {
+  const { format, content } = req.body
+  return importRows(parseMetricsSheet(format === 'csv' ? content : Buffer.from(content, 'base64')), reply)
+}
+
+async function importRows(rows: ReturnType<typeof parseMetricsSheet>, reply: FastifyReply) {
   if (rows.length === 0) return reply.status(400).send({ message: 'A planilha está vazia.' })
 
   const valid: z.infer<typeof createMetricBody>[] = []

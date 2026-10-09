@@ -47,4 +47,10 @@ export const dashboardView = z.object({
   ranking: seriesView,
 })
 
+// Importação sem multipart (MCP): CSV como texto ou xlsx em base64.
+export const importContentBody = z.object({
+  format: z.enum(['csv', 'xlsx']),
+  content: z.string().min(1),
+})
+
 export const templateQuery = z.object({ format: z.enum(['xlsx', 'csv']).default('xlsx') })
