@@ -139,11 +139,14 @@ export async function adInsights(token: string, accountId: string, since: string
 
 type CreativeFields = { id?: string; title?: string; body?: string; image_url?: string; thumbnail_url?: string; object_type?: string }
 
+// thumbnail_url vem 64x64 por padrão (pixelado nos cards); pedir 1080 deixa vídeo/carrossel nítidos.
+const CREATIVE = 'creative.thumbnail_width(1080).thumbnail_height(1080){id,title,body,image_url,thumbnail_url,object_type}'
+
 // Criativo (título, texto, imagem) dos anúncios já ranqueados, um pedido por anúncio em lotes de 10.
 // Não usar /?ids=a,b,c: a Graph derruba o lote inteiro se um único id falhar, e aí nenhum card tinha imagem.
 export async function adCreatives(token: string, ids: string[]) {
   const out = new Map<string, { creativeId: string | null; title: string | null; body: string | null; imageUrl: string | null; type: string | null }>()
-  const fields = 'creative{id,title,body,image_url,thumbnail_url,object_type}'
+  const fields = CREATIVE
   for (let i = 0; i < ids.length; i += 10) {
     const batch = ids.slice(i, i + 10)
     const rows = await Promise.all(
@@ -210,7 +213,7 @@ export function toAd(r: AdRow) {
 // Anúncios veiculando agora (effective_status ACTIVE) de uma conta, com o criativo de cada um.
 export async function activeAds(token: string, accountId: string) {
   const act = `act_${accountId.replace(/^act_/, '')}`
-  const fields = 'id,name,effective_status,campaign{name},adset{name},creative{id,title,body,image_url,thumbnail_url,object_type}'
+  const fields = `id,name,effective_status,campaign{name},adset{name},${CREATIVE}`
   const status = encodeURIComponent('["ACTIVE"]')
   const rows = await graphAll<AdRow>(token, `/${act}/ads?fields=${fields}&effective_status=${status}&limit=200`)
   return rows.map(toAd)
