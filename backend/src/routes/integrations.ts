@@ -13,6 +13,10 @@ import {
   googleCredentialsBody,
   mcpConfigView,
   metaAccountsView,
+  metaAdHiddenBody,
+  metaAdParams,
+  metaAdsQuery,
+  metaAdsView,
   metaCampaignsQuery,
   metaCampaignsView,
   metaConfigBody,
@@ -52,6 +56,16 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     '/meta/campaigns',
     { schema: { querystring: metaCampaignsQuery, response: { 200: metaCampaignsView, 409: errorView, 502: errorView } } },
     controller.metaCampaigns,
+  )
+  app.get(
+    '/meta/ads',
+    { schema: { querystring: metaAdsQuery, response: { 200: metaAdsView, 409: errorView, 502: errorView } } },
+    controller.metaAds,
+  )
+  app.patch(
+    '/meta/ads/:id',
+    { schema: { params: metaAdParams, body: metaAdHiddenBody, response: { 200: metaAdParams.extend(metaAdHiddenBody.shape) } } },
+    controller.hideMetaAd,
   )
   app.get('/integrations/google', { schema: { response: { 200: googleConfigView } } }, controller.showGoogle)
   app.put(

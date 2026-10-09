@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { toAccount, toTotals } from './meta.js'
+import { toAccount, toAd, toTotals } from './meta.js'
 
 const a1 = { id: 'act_1', account_id: '1', name: 'A', account_status: 1, currency: 'BRL' }
 const a2 = { id: 'act_2', account_id: '2', name: 'B', account_status: 2, currency: 'BRL' }
@@ -29,3 +29,7 @@ assert.equal(t.spend, 100.5)
 assert.equal(t.ctr, 2)
 assert.equal(t.cpc, 100.5 / 200)
 console.log('meta.check ok')
+
+const ad = toAd({ id: '9', name: 'Ad', effective_status: 'ACTIVE', campaign: { name: 'C' }, creative: { id: '5', thumbnail_url: 't', object_type: 'VIDEO' } })
+assert.deepEqual([ad.campaign, ad.adset, ad.imageUrl, ad.type, ad.title], ['C', null, 't', 'VIDEO', null])
+assert.equal(toAd({ id: '1', name: 'x', effective_status: 'ACTIVE', creative: { id: '2', image_url: 'i', thumbnail_url: 't' } }).imageUrl, 'i')

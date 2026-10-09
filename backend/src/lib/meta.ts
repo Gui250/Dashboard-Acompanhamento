@@ -133,3 +133,38 @@ export async function accountInsights(token: string, accounts: AdAccount[], sinc
   }
   return out.sort((a, b) => b.spend - a.spend)
 }
+
+type AdRow = {
+  id: string
+  name: string
+  effective_status: string
+  campaign?: { name: string }
+  adset?: { name: string }
+  creative?: { id: string; title?: string; body?: string; image_url?: string; thumbnail_url?: string; object_type?: string }
+}
+
+// Anúncio + criativo no formato da API; image_url é a imagem cheia, thumbnail_url (vídeo, carrossel) é pequena.
+export function toAd(r: AdRow) {
+  const c = r.creative
+  return {
+    id: r.id,
+    name: r.name,
+    status: r.effective_status,
+    campaign: r.campaign?.name ?? null,
+    adset: r.adset?.name ?? null,
+    creativeId: c?.id ?? null,
+    title: c?.title ?? null,
+    body: c?.body ?? null,
+    imageUrl: c?.image_url ?? c?.thumbnail_url ?? null,
+    type: c?.object_type ?? null,
+  }
+}
+
+// Anúncios veiculando agora (effective_status ACTIVE) de uma conta, com o criativo de cada um.
+export async function activeAds(token: string, accountId: string) {
+  const act = `act_${accountId.replace(/^act_/, '')}`
+  const fields = 'id,name,effective_status,campaign{name},adset{name},creative{id,title,body,image_url,thumbnail_url,object_type}'
+  const status = encodeURIComponent('["ACTIVE"]')
+  const rows = await graphAll<AdRow>(token, `/${act}/ads?fields=${fields}&effective_status=${status}&limit=200`)
+  return rows.map(toAd)
+}

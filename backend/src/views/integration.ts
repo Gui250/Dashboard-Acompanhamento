@@ -118,6 +118,30 @@ const campaignsView = <T extends z.ZodRawShape>(campaign: T) =>
   z.object({ accountId: z.string(), from: z.string(), to: z.string(), campaigns: z.array(z.object({ id: z.string(), name: z.string(), ...campaign })) })
 
 export const metaCampaignsView = campaignsView(metrics)
+
+// Anúncios ativos (com o criativo) de uma conta da Meta; hidden = escondido do dashboard.
+export const metaAdsQuery = z.object({ accountId: metaCampaignsQuery.shape.accountId })
+export const metaAdParams = z.object({ id: z.string().regex(/^\d+$/) })
+export const metaAdHiddenBody = z.object({ hidden: z.boolean() })
+
+export const metaAdsView = z.object({
+  accountId: z.string(),
+  ads: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      status: z.string(),
+      campaign: z.string().nullable(),
+      adset: z.string().nullable(),
+      creativeId: z.string().nullable(),
+      title: z.string().nullable(),
+      body: z.string().nullable(),
+      imageUrl: z.string().nullable(),
+      type: z.string().nullable(),
+      hidden: z.boolean(),
+    }),
+  ),
+})
 export const googleCampaignsView = campaignsView({ status: z.enum(['ativa', 'pausada', 'removida', 'outro']), ...googleMetrics })
 
 // Chave fixa do servidor MCP (env MCP_API_KEY); null = só o JWT do login entra.

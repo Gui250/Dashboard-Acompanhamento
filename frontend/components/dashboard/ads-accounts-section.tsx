@@ -3,9 +3,10 @@
 import { format } from "date-fns";
 import { Loader2, Megaphone, MousePointerClick, Search, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { AdsSkeleton, DashboardError } from "@/components/dashboard/dashboard-parts";
+import { MetaAdsDialog } from "@/components/dashboard/meta-ads-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -39,6 +40,7 @@ type Config<R extends Report> = {
   subtitle?: (account: Account<R>) => string;
   kpis: (report: R, money: Intl.NumberFormat) => [string, string][];
   columns: [string, (account: Account<R>, money: Intl.NumberFormat) => string][];
+  action?: (account: Account<R>) => ReactNode; // última coluna, ex.: ver criativos
 };
 
 function AdsAccountsSection<R extends Report>({ config }: { config: Config<R> }) {
@@ -147,10 +149,11 @@ function AdsAccountsSection<R extends Report>({ config }: { config: Config<R> })
                   <tr className="border-b text-left text-xs text-muted-foreground">
                     <th className="py-2 pr-3 font-medium">Conta</th><th className="px-3 font-medium">Status</th>
                     {config.columns.map(([h]) => <th key={h} className="px-3 text-right font-medium">{h}</th>)}
+                    {config.action && <th className="pl-3" />}
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 && <tr><td colSpan={config.columns.length + 2} className="py-8 text-center text-muted-foreground">Nenhuma conta encontrada.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={config.columns.length + 2 + (config.action ? 1 : 0)} className="py-8 text-center text-muted-foreground">Nenhuma conta encontrada.</td></tr>}
                   {rows.map((a) => {
                     const m = new Intl.NumberFormat("pt-BR", { style: "currency", currency: a.currency });
                     return (
@@ -158,6 +161,7 @@ function AdsAccountsSection<R extends Report>({ config }: { config: Config<R> })
                         <td className="py-3 pr-3"><p className="font-semibold">{a.name}</p>{config.subtitle && <p className="font-mono text-[10px] text-muted-foreground">{config.subtitle(a)}</p>}</td>
                         <td className="px-3"><span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_STYLE[a.status])}>{a.status}</span></td>
                         {config.columns.map(([h, cell], i) => <td key={h} className={cn("px-3 text-right", i === 0 && "font-semibold")}>{cell(a, m)}</td>)}
+                        {config.action && <td className="pl-3 text-right">{config.action(a)}</td>}
                       </tr>
                     );
                   })}
@@ -195,6 +199,7 @@ const META: Config<MetaAccountsReport> = {
     ["Leads", (a) => int.format(a.leads)],
     ["Compras", (a) => int.format(a.purchases)],
   ],
+  action: (a) => <MetaAdsDialog accountId={a.id} accountName={a.name} />,
 };
 
 const GOOGLE: Config<GoogleAccountsReport> = {

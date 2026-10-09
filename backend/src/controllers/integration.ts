@@ -11,13 +11,17 @@ import {
   saveMetaConfig,
   saveOpenAIConfig,
 } from '../models/setting.js'
-import { accountInsights, campaignInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
+import { accountInsights, activeAds, campaignInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
 import * as google from '../lib/google.js'
+import { hiddenAdIds, setAdHidden } from '../models/hidden-ad.js'
 import type {
   dateRangeQuery,
   googleCallbackQuery,
   googleCampaignsQuery,
   googleCredentialsBody,
+  metaAdHiddenBody,
+  metaAdParams,
+  metaAdsQuery,
   metaCampaignsQuery,
   metaConfigBody,
   openAIConfigBody,
@@ -119,6 +123,24 @@ export async function metaCampaigns(req: FastifyRequest<{ Querystring: z.infer<t
   } catch (e) {
     return reply.status(502).send({ message: e instanceof MetaError ? e.message : 'Falha ao consultar a Meta.' })
   }
+}
+
+export async function metaAds(req: FastifyRequest<{ Querystring: z.infer<typeof metaAdsQuery> }>, reply: FastifyReply) {
+  const config = await getMetaConfig()
+  if (!config) return reply.status(409).send({ message: 'Configure a Meta em Integrações.' })
+  try {
+    const ads = await activeAds(config.accessToken, req.query.accountId)
+    const hidden = await hiddenAdIds(ads.map((a) => a.id))
+    return { accountId: req.query.accountId, ads: ads.map((a) => ({ ...a, hidden: hidden.has(a.id) })) }
+  } catch (e) {
+    return reply.status(502).send({ message: e instanceof MetaError ? e.message : 'Falha ao consultar a Meta.' })
+  }
+}
+
+// Só esconde/mostra no dashboard; não muda nada na Meta.
+export async function hideMetaAd(req: FastifyRequest<{ Params: z.infer<typeof metaAdParams>; Body: z.infer<typeof metaAdHiddenBody> }>) {
+  await setAdHidden(req.params.id, req.body.hidden)
+  return { id: req.params.id, hidden: req.body.hidden }
 }
 
 // --- Google Ads: credenciais padrão do servidor (ADC), JSON colado no painel ou login OAuth ---

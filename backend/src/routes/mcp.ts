@@ -4,9 +4,9 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
-import { createMetricBody, metricFilters, seriesQuery } from '../views/metric.js'
+import { createMetricBody, importContentBody, metricFilters, seriesQuery } from '../views/metric.js'
 import { createCreativeBody, updateCreativeBody } from '../views/creative.js'
-import { dateRangeQuery, googleCampaignsQuery, metaCampaignsQuery } from '../views/integration.js'
+import { dateRangeQuery, googleCampaignsQuery, metaAdHiddenBody, metaAdParams, metaAdsQuery, metaCampaignsQuery } from '../views/integration.js'
 
 // Servidor MCP (Streamable HTTP) em /mcp. Cada tool repassa para uma rota REST via inject:
 // validação, regras e erros continuam num lugar só. Para expor algo novo, acrescente uma linha em TOOLS.
@@ -44,6 +44,16 @@ const TOOLS: Tool[] = [
     method: 'POST',
     url: '/metrics',
     input: createMetricBody,
+  },
+  {
+    name: 'import_metrics_sheet',
+    description:
+      'Importa uma planilha de métricas. Colunas (cabeçalho na 1ª linha): secao (comercial|operacional), metrica, dimensao (opcional), valor, data (AAAA-MM-DD ou DD/MM/AAAA). ' +
+      'format=csv: content é o texto CSV (separador , ou ;). format=xlsx: content é o arquivo em base64 (lê a 1ª aba). ' +
+      'Se a planilha do usuário tiver outro layout, converta para essas colunas em CSV antes. Tudo ou nada: com qualquer linha inválida nada é gravado e voltam os erros por linha.',
+    method: 'POST',
+    url: '/metrics/import/content',
+    input: importContentBody,
   },
   {
     name: 'list_creatives',
@@ -87,6 +97,23 @@ const TOOLS: Tool[] = [
     method: 'GET',
     url: '/meta/campaigns',
     input: metaCampaignsQuery,
+  },
+  {
+    name: 'meta_ads_creatives',
+    description:
+      'Anúncios veiculando agora (ACTIVE) de uma conta da Meta (accountId = id de meta_ads_accounts) com o criativo: título, texto, imagem, tipo, campanha e conjunto. ' +
+      'hidden=true = escondido do dashboard.',
+    method: 'GET',
+    url: '/meta/ads',
+    input: metaAdsQuery,
+  },
+  {
+    name: 'hide_meta_ad',
+    description:
+      'Esconde (hidden=true) ou volta a mostrar (hidden=false) um anúncio da Meta no dashboard, pelo id de meta_ads_creatives. Não pausa nada na Meta: o anúncio continua veiculando.',
+    method: 'PATCH',
+    url: '/meta/ads/:id',
+    input: metaAdParams.extend(metaAdHiddenBody.shape),
   },
   {
     name: 'google_ads_accounts',
@@ -151,6 +178,7 @@ export async function mcpRoutes(app: FastifyInstance) {
   app.route({
     method: ['GET', 'POST', 'DELETE'],
     url: '/mcp',
+    bodyLimit: 8 * 1024 * 1024, // cabe o xlsx em base64 do import_metrics_sheet
     onRequest: mcpAuth,
     handler: async (req, reply) => {
       reply.hijack() // a resposta (JSON ou SSE) é escrita pelo SDK direto no socket

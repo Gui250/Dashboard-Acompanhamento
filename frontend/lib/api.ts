@@ -260,6 +260,29 @@ export function getMetaAccounts(from?: string, to?: string) {
   return apiRequest<MetaAccountsReport>(`/meta/accounts?${rangeParams(from, to)}`, undefined, true);
 }
 
+// Anúncio ativo da Meta com o criativo; hidden = escondido do dashboard (na Meta continua veiculando).
+export type MetaAd = {
+  id: string;
+  name: string;
+  status: string;
+  campaign: string | null;
+  adset: string | null;
+  creativeId: string | null;
+  title: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  type: string | null;
+  hidden: boolean;
+};
+
+export function getMetaAds(accountId: string) {
+  return apiRequest<{ accountId: string; ads: MetaAd[] }>(`/meta/ads?accountId=${encodeURIComponent(accountId)}`, undefined, true);
+}
+
+export function setMetaAdHidden(id: string, hidden: boolean) {
+  return apiRequest<{ id: string; hidden: boolean }>(`/meta/ads/${id}`, { method: "PATCH", body: JSON.stringify({ hidden }) }, true);
+}
+
 // oauth = servidor tem o OAuth client do Google; source = de onde vem o acesso (null = sem acesso).
 export type GoogleConfig = {
   oauth: boolean;
