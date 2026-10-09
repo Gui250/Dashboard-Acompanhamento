@@ -1,11 +1,11 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { createMcpHandler, McpServer } from '@modelcontextprotocol/server'
+import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
-import { createMetricBody, importContentBody, metricFilters, seriesQuery } from '../views/metric.js'
-import { createCreativeBody, creativesQuery, funnelBody, updateCreativeBody } from '../views/creative.js'
+import { createMetricBody, importContentBody, metricFilters, seriesQuery, templateTool } from '../views/metric.js'
+import { createCreativeBody, creativesQuery, funnelBody, funnelChanges, updateCreativeBody } from '../views/creative.js'
 import { dateRangeQuery, googleCampaignsQuery, metaAdHiddenBody, metaAdParams, metaAdsQuery, metaCampaignsQuery } from '../views/integration.js'
 
 // Servidor MCP (Streamable HTTP) em /mcp. Cada tool repassa para uma rota REST via inject:
@@ -17,6 +17,7 @@ type Tool = {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   url: string // ":id" é trocado pelo argumento de mesmo nome
   input: z.ZodObject
+  download?: true // rota pública que devolve arquivo: a resposta ganha o link para baixar
 }
 
 const TOOLS: Tool[] = [
@@ -57,7 +58,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'list_funnels',
-    description: 'Lista os funis (kanbans separados) com id e nome. Todo criativo pertence a um funil.',
+    description: 'Lista os funis (kanbans separados) com id, nome e isDefault (o padrão vem primeiro). Todo criativo pertence a um funil.',
     method: 'GET',
     url: '/funnels',
     input: z.object({}),
@@ -70,6 +71,31 @@ const TOOLS: Tool[] = [
     input: funnelBody,
   },
   {
+    name: 'update_funnel',
+    description: 'Renomeia um funil (name) e/ou o torna o padrão (isDefault: true; o anterior deixa de ser).',
+    method: 'PATCH',
+    url: '/funnels/:id',
+    input: funnelChanges.extend({ id: z.number().int().positive() }),
+  },
+  {
+    name: 'delete_funnel',
+    description: 'Exclui um funil; os criativos dele vão para o funil padrão (nada é apagado). O padrão não pode ser excluído. Confirme com o usuário antes.',
+    method: 'DELETE',
+    url: '/funnels/:id',
+    input: z.object({ id: z.number().int().positive() }),
+  },
+  {
+    name: 'create_metrics_template',
+    description:
+      'Cria o modelo de planilha de métricas para preencher e importar (depois, com import_metrics_sheet). ' +
+      'Sem keys: modelo com linhas de exemplo. Com keys (+ section): uma linha por métrica × dimensão (dimensions, opcional) com o valor em branco e a data (date, opcional) já preenchida. ' +
+      'format=csv devolve o texto; xlsx devolve o arquivo (com aba de instruções). Os dois vêm com o link de download.',
+    method: 'GET',
+    url: '/metrics/template',
+    input: templateTool,
+    download: true,
+  },
+  {
     name: 'list_creatives',
     description: 'Lista os criativos do kanban (funnelId, title, account, format, owner, stage). funnelId opcional filtra por funil.',
     method: 'GET',
@@ -79,7 +105,7 @@ const TOOLS: Tool[] = [
   {
     name: 'create_creative',
     description:
-      'Cria um criativo no kanban de um funil (funnelId de list_funnels). stage padrão: briefing. ' +
+      'Cria um criativo no kanban de um funil (funnelId de list_funnels; omitido = funil padrão). stage padrão: briefing. ' +
       'Entrar em revisao manda e-mail de aprovação para flaviasobral@v4.company.',
     method: 'POST',
     url: '/creatives',
@@ -168,6 +194,8 @@ function buildServer(app: FastifyInstance) {
           headers: { authorization: `Bearer ${app.jwt.sign({ sub: 'mcp' }, { expiresIn: '1m' })}` },
           ...((t.method === 'POST' || t.method === 'PATCH') && { payload: rest }),
         })
+        const type = String(res.headers['content-type'] ?? '')
+        if (res.statusCode < 400 && res.body && !type.includes('json')) return fileResult(res.rawPayload, type, t.download && publicUrl(url, query))
         let data: unknown = res.body ? res.json() : { ok: res.statusCode < 400 } // 204 do DELETE
         if (Array.isArray(data) && data.length > MAX_ROWS) data = { total: data.length, truncated: true, rows: data.slice(0, MAX_ROWS) }
         return { content: [{ type: 'text' as const, text: JSON.stringify(data) }], isError: res.statusCode >= 400 }
@@ -175,6 +203,21 @@ function buildServer(app: FastifyInstance) {
     )
   }
   return server
+}
+
+// Endereço público da API: o Render preenche RENDER_EXTERNAL_URL; local, a porta do .env.
+function publicUrl(url: string, query: URLSearchParams) {
+  const base = process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${process.env.PORT ?? 3333}`
+  return `${base}${url}${query.size ? `?${query}` : ''}`
+}
+
+// Texto (ex.: CSV) vai inline; binário (ex.: xlsx) vai como recurso em base64.
+function fileResult(body: Buffer, mimeType: string, link: string | false | undefined) {
+  const content: CallToolResult['content'] = mimeType.startsWith('text/')
+    ? [{ type: 'text', text: body.toString('utf8').replace(/^\uFEFF/, '') }]
+    : [{ type: 'resource', resource: { uri: link || 'v4-dashboard://arquivo', mimeType, blob: body.toString('base64') } }]
+  if (link) content.push({ type: 'text', text: `Download: ${link}` })
+  return { content }
 }
 
 // sha256 dos dois lados: timingSafeEqual exige o mesmo tamanho.

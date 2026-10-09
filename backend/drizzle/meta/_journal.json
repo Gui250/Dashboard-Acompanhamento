@@ -43,6 +43,13 @@
       "when": 1791562770133,
       "tag": "0005_brown_glorian",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791563714388,
+      "tag": "0006_third_lady_bullseye",
+      "breakpoints": true
     }
   ]
 }

@@ -4,17 +4,20 @@ import {
   createCreative,
   createFunnel,
   creativeStage,
+  defaultFunnel,
   deleteCreative,
+  deleteFunnel,
   findCreativeImage,
   findFunnel,
   listCreatives,
   listFunnels,
   setCreativeImage,
   updateCreative,
+  updateFunnel,
 } from '../models/creative.js'
 import { escapeHtml, sendEmail } from '../lib/email.js'
 import { webUrl } from './integration.js'
-import type { createCreativeBody, creativeParams, creativesQuery, funnelBody, updateCreativeBody } from '../views/creative.js'
+import type { createCreativeBody, creativeParams, creativesQuery, funnelBody, updateCreativeBody, updateFunnelBody } from '../views/creative.js'
 
 type Params = { Params: z.infer<typeof creativeParams> }
 const notFound = { message: 'Criativo não encontrado.' }
@@ -59,8 +62,9 @@ export function list(req: FastifyRequest<{ Querystring: z.infer<typeof creatives
 }
 
 export async function create(req: FastifyRequest<{ Body: z.infer<typeof createCreativeBody> }>, reply: FastifyReply) {
-  if (!(await findFunnel(req.body.funnelId))) return reply.status(400).send(noFunnel)
-  const row = await createCreative(req.body)
+  const funnel = await (req.body.funnelId ? findFunnel(req.body.funnelId) : defaultFunnel())
+  if (!funnel) return reply.status(400).send(noFunnel)
+  const row = await createCreative({ ...req.body, funnelId: funnel.id })
   notifyIfReview(req, row)
   return reply.status(201).send(row)
 }
@@ -80,7 +84,22 @@ export function funnels() {
 
 export async function addFunnel(req: FastifyRequest<{ Body: z.infer<typeof funnelBody> }>, reply: FastifyReply) {
   const row = await createFunnel(req.body.name)
-  return row ? reply.status(201).send(row) : reply.status(409).send({ message: 'Já existe um funil com esse nome.' })
+  return row ? reply.status(201).send(row) : reply.status(409).send(duplicateFunnel)
+}
+
+const duplicateFunnel = { message: 'Já existe um funil com esse nome.' }
+
+export async function editFunnel(req: FastifyRequest<Params & { Body: z.infer<typeof updateFunnelBody> }>, reply: FastifyReply) {
+  const row = await updateFunnel(req.params.id, req.body)
+  if (row === null) return reply.status(409).send(duplicateFunnel)
+  return row ?? reply.status(404).send(noFunnel)
+}
+
+export async function removeFunnel(req: FastifyRequest<Params>, reply: FastifyReply) {
+  const result = await deleteFunnel(req.params.id)
+  if (!result) return reply.status(404).send(noFunnel)
+  if (result === 'default') return reply.status(409).send({ message: 'O funil padrão não pode ser excluído. Marque outro como padrão antes.' })
+  return result
 }
 
 export async function remove(req: FastifyRequest<Params>, reply: FastifyReply) {

@@ -20,7 +20,7 @@ export type DashboardSnapshot = {
 
 export type CreativeStage = "briefing" | "producao" | "revisao" | "aprovado" | "publicado";
 
-export type Funnel = { id: number; name: string };
+export type Funnel = { id: number; name: string; isDefault: boolean };
 
 export type Creative = {
   id: number;
@@ -35,7 +35,8 @@ export type Creative = {
   updatedAt: string;
 };
 
-export type CreateCreativeInput = Pick<Creative, "funnelId" | "title" | "account" | "format" | "owner"> & {
+export type CreateCreativeInput = Pick<Creative, "title" | "account" | "format" | "owner"> & {
+  funnelId?: number;
   stage?: CreativeStage;
 };
 
@@ -172,6 +173,15 @@ export function getFunnels() {
 
 export function createFunnel(name: string) {
   return apiRequest<Funnel>("/funnels", { method: "POST", body: JSON.stringify({ name }) }, true);
+}
+
+export function updateFunnel(id: number, input: { name?: string; isDefault?: true }) {
+  return apiRequest<Funnel>(`/funnels/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true);
+}
+
+// Os criativos do funil excluído vão para o padrão.
+export function deleteFunnel(id: number) {
+  return apiRequest<{ moved: number }>(`/funnels/${id}`, { method: "DELETE" }, true);
 }
 
 export function createCreative(input: CreateCreativeInput) {

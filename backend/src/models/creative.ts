@@ -1,5 +1,5 @@
-import { asc, eq, sql } from 'drizzle-orm'
-import { customType, integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+import { asc, desc, eq, sql } from 'drizzle-orm'
+import { boolean, customType, integer, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 import { db } from './db.js'
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' })
@@ -7,17 +7,23 @@ const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' })
 export const STAGES = ['briefing', 'producao', 'revisao', 'aprovado', 'publicado'] as const
 
 // Funil = um kanban separado; todos usam as mesmas etapas.
-export const funnels = pgTable('funnels', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+// O padrão (só um, garantido pelo índice) abre primeiro e recebe os criativos sem funil e os de funis excluídos.
+export const funnels = pgTable(
+  'funnels',
+  {
+    id: serial('id').primaryKey(),
+    name: text('name').notNull().unique(),
+    isDefault: boolean('is_default').notNull().default(false),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('funnels_one_default_idx').on(t.isDefault).where(sql`${t.isDefault}`)],
+)
 
 export const creatives = pgTable('creatives', {
   id: serial('id').primaryKey(),
   funnelId: integer('funnel_id')
     .notNull()
-    .references(() => funnels.id, { onDelete: 'cascade' }),
+    .references(() => funnels.id, { onDelete: 'restrict' }), // excluir funil nunca apaga criativos
   title: text('title').notNull(),
   account: text('account').notNull(),
   format: text('format').notNull(),
@@ -59,19 +65,56 @@ export async function creativeStage(id: number) {
   return row?.stage
 }
 
+const funnelView = { id: funnels.id, name: funnels.name, isDefault: funnels.isDefault }
+
+// Padrão primeiro, depois por criação.
 export function listFunnels() {
-  return db.select({ id: funnels.id, name: funnels.name }).from(funnels).orderBy(asc(funnels.id))
+  return db.select(funnelView).from(funnels).orderBy(desc(funnels.isDefault), asc(funnels.id))
 }
 
 export async function findFunnel(id: number) {
-  const [row] = await db.select({ id: funnels.id, name: funnels.name }).from(funnels).where(eq(funnels.id, id))
+  const [row] = await db.select(funnelView).from(funnels).where(eq(funnels.id, id))
   return row
 }
 
-// undefined = já existe um funil com esse nome.
-export async function createFunnel(name: string) {
-  const [row] = await db.insert(funnels).values({ name }).onConflictDoNothing().returning({ id: funnels.id, name: funnels.name })
+export async function defaultFunnel() {
+  const [row] = await db.select(funnelView).from(funnels).where(eq(funnels.isDefault, true))
   return row
+}
+
+// undefined = já existe um funil com esse nome. O primeiro funil criado já nasce padrão.
+export async function createFunnel(name: string) {
+  const isDefault = sql<boolean>`not exists (select 1 from ${funnels} where ${funnels.isDefault})`
+  const [row] = await db.insert(funnels).values({ name, isDefault }).onConflictDoNothing().returning(funnelView)
+  return row
+}
+
+// Renomeia e/ou vira o padrão (o padrão anterior deixa de ser). Só dá para ganhar o padrão, não tirar:
+// sempre existe um. undefined = não existe; null = nome já usado por outro funil.
+export function updateFunnel(id: number, { name, isDefault }: { name?: string; isDefault?: true }) {
+  return db.transaction(async (tx) => {
+    const [found] = await tx.select({ id: funnels.id }).from(funnels).where(eq(funnels.id, id))
+    if (!found) return undefined
+    const [clash] = name ? await tx.select({ id: funnels.id }).from(funnels).where(eq(funnels.name, name)) : []
+    if (clash && clash.id !== id) return null
+    if (isDefault) await tx.update(funnels).set({ isDefault: false }).where(eq(funnels.isDefault, true))
+    const [row] = await tx.update(funnels).set({ name, isDefault }).where(eq(funnels.id, id)).returning(funnelView)
+    return row
+  })
+}
+
+// Move os criativos para o padrão e apaga o funil. O padrão não pode ser excluído.
+// 'default' = é o padrão; undefined = não existe.
+export function deleteFunnel(id: number) {
+  return db.transaction(async (tx) => {
+    const [target] = await tx.select(funnelView).from(funnels).where(eq(funnels.id, id))
+    if (!target) return undefined
+    if (target.isDefault) return 'default' as const
+    const [fallback] = await tx.select({ id: funnels.id }).from(funnels).where(eq(funnels.isDefault, true))
+    const moved = await tx.update(creatives).set({ funnelId: fallback.id }).where(eq(creatives.funnelId, id)).returning({ id: creatives.id })
+    await tx.delete(funnels).where(eq(funnels.id, id))
+    return { moved: moved.length }
+  })
 }
 
 export async function createCreative(data: NewCreative) {

@@ -26,13 +26,13 @@ type LoadError = { message: string; unavailable: boolean };
 
 const FUNNEL_KEY = "v4-dashboard-funnel";
 
-// Funil aberto por último neste navegador; sem ele (ou se sumiu), o primeiro.
+// Funil aberto por último neste navegador; sem ele (ou se sumiu), o padrão.
 function useFunnel() {
   const { data: funnels = [] } = useQuery("funnels", getFunnels);
   const [chosen, setChosen] = useState<number | null>(() => {
     try { return Number(localStorage.getItem(FUNNEL_KEY)) || null; } catch { return null; }
   });
-  const current = funnels.find((f) => f.id === chosen)?.id ?? funnels[0]?.id ?? null;
+  const current = funnels.find((f) => f.id === chosen)?.id ?? funnels.find((f) => f.isDefault)?.id ?? funnels[0]?.id ?? null;
   function select(id: number) {
     setChosen(id);
     try { localStorage.setItem(FUNNEL_KEY, String(id)); } catch {}
@@ -41,7 +41,14 @@ function useFunnel() {
     setQueryData("funnels", [...funnels, funnel]);
     select(funnel.id);
   }
-  return { funnels, current, select, add };
+  // Virou padrão = os outros deixam de ser.
+  function update(funnel: Funnel) {
+    setQueryData("funnels", funnels.map((f) => f.id === funnel.id ? funnel : funnel.isDefault ? { ...f, isDefault: false } : f));
+  }
+  function remove(id: number) {
+    setQueryData("funnels", funnels.filter((f) => f.id !== id));
+  }
+  return { funnels, current, select, add, update, remove };
 }
 
 export default function KanbanPage() {
@@ -155,7 +162,14 @@ export default function KanbanPage() {
         action={funnel.current !== null && <CreateCreativeDialog funnelId={funnel.current} onCreated={addCreative} />}
       />
 
-      <FunnelTabs funnels={funnel.funnels} value={funnel.current} onChange={funnel.select} onCreated={funnel.add} />
+      <FunnelTabs
+        funnels={funnel.funnels}
+        value={funnel.current}
+        onChange={funnel.select}
+        onCreated={funnel.add}
+        onUpdated={funnel.update}
+        onDeleted={(id) => { funnel.remove(id); void loadCards(true); }}
+      />
 
       {isLoading ? <KanbanSkeleton /> : loadError ? (
         <div className="rounded-lg border border-primary/20 bg-white p-6 shadow-panel">
