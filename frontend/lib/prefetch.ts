@@ -6,6 +6,7 @@ import {
   getGoogleAccounts,
   getGoogleConfig,
   getMetaAccounts,
+  getMetaTopAds,
   type MetricSection,
 } from "@/lib/api";
 import { prefetchQuery } from "@/lib/query-cache";
@@ -40,6 +41,13 @@ const adsFetchers = {
 };
 export type AdsSource = keyof typeof adsFetchers;
 
+export function topAdsQuery(days: number) {
+  const now = new Date();
+  const from = format(subDays(now, days - 1), "yyyy-MM-dd");
+  const to = format(now, "yyyy-MM-dd");
+  return { key: `meta-top-ads:${from}:${to}`, fetcher: () => orNull(getMetaTopAds(from, to)) };
+}
+
 export function adsQuery(source: AdsSource, days: number) {
   const now = new Date();
   const from = format(subDays(now, days - 1), "yyyy-MM-dd");
@@ -65,6 +73,8 @@ export function prefetchRouteData(href: string) {
     void prefetchDashboard("operacional", "criativos_em_esteira", "contas_ativas");
     prefetchAds("meta");
     prefetchAds("google");
+    const top = topAdsQuery(30);
+    prefetchQuery(top.key, top.fetcher, ADS_STALE_MS).catch(() => undefined);
   } else if (href.startsWith("/kanban")) void prefetchQuery("creatives", getCreatives, DASHBOARD_STALE_MS);
   else if (href.startsWith("/integracoes")) {
     // A chave do MCP fica de fora: o cache vai para o sessionStorage.

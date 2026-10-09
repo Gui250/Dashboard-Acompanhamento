@@ -228,6 +228,7 @@ export default function KanbanPage() {
                           </div>
                           <h4 className="mt-4 text-sm font-bold leading-5">{card.title}</h4>
                           <p className="mt-1 text-xs text-muted-foreground">{card.account}</p>
+                          {card.reviewNote && <p className="mt-2 line-clamp-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800" title={card.reviewNote}>Ajustes: {card.reviewNote}</p>}
                           <div className="mt-5 flex items-center justify-between border-t pt-3">
                             <span className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">#{String(card.id).padStart(4, "0")}</span>
                             <span className="grid h-7 min-w-7 max-w-24 place-items-center truncate rounded-full bg-[#171717] px-2 text-[9px] font-bold text-white">{card.owner}</span>

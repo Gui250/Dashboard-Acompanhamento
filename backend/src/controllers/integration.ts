@@ -11,8 +11,9 @@ import {
   saveMetaConfig,
   saveOpenAIConfig,
 } from '../models/setting.js'
-import { accountInsights, activeAds, campaignInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
+import { accountInsights, activeAds, adCreatives, adInsights, campaignInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
 import * as google from '../lib/google.js'
+import { webUrl } from '../lib/urls.js'
 import { hiddenAdIds, setAdHidden } from '../models/hidden-ad.js'
 import type {
   dateRangeQuery,
@@ -125,6 +126,31 @@ export async function metaCampaigns(req: FastifyRequest<{ Querystring: z.infer<t
   }
 }
 
+const EMPTY_CREATIVE = { creativeId: null, title: null, body: null, imageUrl: null, type: null }
+
+// Anúncios com resultado em todas as contas, sem os ocultos no dashboard. O recorte é por gasto; a tela reordena.
+export async function metaTopAds(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
+  const config = await getMetaConfig()
+  if (!config) return reply.status(409).send({ message: 'Configure a Meta em Integrações.' })
+  const { from, to } = range(req.query)
+  try {
+    const { accessToken: token, businessId } = config
+    const accounts = await listBusinessAdAccounts(token, businessId)
+    const rows: (Awaited<ReturnType<typeof adInsights>>[number] & { accountId: string; accountName: string; currency: string })[] = []
+    for (let i = 0; i < accounts.length; i += 10) {
+      const batch = accounts.slice(i, i + 10)
+      const lists = await Promise.all(batch.map((a) => adInsights(token, a.id, from, to).catch(() => [])))
+      batch.forEach((a, j) => lists[j].forEach((ad) => rows.push({ ...ad, accountId: a.id, accountName: a.name, currency: a.currency })))
+    }
+    const hidden = await hiddenAdIds(rows.map((ad) => ad.id))
+    const top = rows.filter((ad) => !hidden.has(ad.id)).sort((a, b) => b.spend - a.spend).slice(0, 36)
+    const creatives = await adCreatives(token, top.map((ad) => ad.id))
+    return { from, to, ads: top.map((ad) => ({ ...ad, ...(creatives.get(ad.id) ?? EMPTY_CREATIVE) })) }
+  } catch (e) {
+    return reply.status(502).send({ message: e instanceof MetaError ? e.message : 'Falha ao consultar a Meta.' })
+  }
+}
+
 export async function metaAds(req: FastifyRequest<{ Querystring: z.infer<typeof metaAdsQuery> }>, reply: FastifyReply) {
   const config = await getMetaConfig()
   if (!config) return reply.status(409).send({ message: 'Configure a Meta em Integrações.' })
@@ -204,8 +230,6 @@ export async function googleAuthUrl(_req: FastifyRequest, reply: FastifyReply) {
   return { url: google.authUrl() }
 }
 
-// Primeira origem do CORS = endereço do front.
-export const webUrl = () => (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',')[0]
 
 // Volta do consentimento: rota pública (o navegador chega sem Bearer); o state assinado faz o papel do login.
 export async function googleCallback(req: FastifyRequest<{ Querystring: z.infer<typeof googleCallbackQuery> }>, reply: FastifyReply) {

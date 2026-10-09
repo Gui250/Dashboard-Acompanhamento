@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import * as controller from '../controllers/auth.js'
 import { errorView, loginBody, registerBody, sessionView, userView } from '../views/user.js'
+import { findUserById, type Permission } from '../models/user.js'
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -15,6 +16,16 @@ export async function authenticate(req: FastifyRequest, reply: FastifyReply) {
     await req.jwtVerify()
   } catch {
     return reply.status(401).send({ message: 'Não autenticado.' })
+  }
+}
+
+export function requirePermission(permission: Permission) {
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    if (req.user.sub === 'mcp') return
+    const user = await findUserById(Number(req.user.sub))
+    if (!user?.role.permissions.includes(permission)) {
+      return reply.status(403).send({ message: 'Seu cargo não permite esta ação.' })
+    }
   }
 }
 

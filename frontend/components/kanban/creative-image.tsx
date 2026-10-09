@@ -60,7 +60,7 @@ export function validateCreativeImage(file: File) {
   return null;
 }
 
-export function ProtectedCreativeImage({ creative, className }: { creative: Creative; className?: string }) {
+export function ProtectedCreativeImage({ creative, className, fit = "cover" }: { creative: Creative; className?: string; fit?: "cover" | "contain" }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cached = imageUrls.get(imageKey(creative)) ?? null;
   const [visible, setVisible] = useState(Boolean(cached));
@@ -100,7 +100,7 @@ export function ProtectedCreativeImage({ creative, className }: { creative: Crea
 
   return (
     <div ref={hostRef} className={cn("overflow-hidden bg-muted", className)}>
-      {url && !failed ? <img src={url} alt={`Criativo ${creative.title}`} className="h-full w-full object-cover" draggable={false} decoding="async" /> : failed ? (
+      {url && !failed ? <img src={url} alt={`Criativo ${creative.title}`} className={cn("h-full w-full", fit === "contain" ? "object-contain" : "object-cover")} draggable={false} decoding="async" /> : failed ? (
         <div className="grid h-full place-items-center text-muted-foreground"><ImageOff className="h-5 w-5" /><span className="sr-only">Imagem indisponível</span></div>
       ) : <div className="h-full w-full animate-pulse" aria-label="Carregando imagem" />}
     </div>

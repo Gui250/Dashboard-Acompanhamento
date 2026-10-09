@@ -1,6 +1,7 @@
-import { asc, desc, eq, sql } from 'drizzle-orm'
+import { asc, desc, eq, gt, sql } from 'drizzle-orm'
 import { boolean, customType, integer, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 import { db } from './db.js'
+import { users } from './user.js'
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' })
 
@@ -31,12 +32,16 @@ export const creatives = pgTable('creatives', {
   stage: text('stage', { enum: STAGES }).notNull().default('briefing'),
   image: bytea('image'),
   imageType: text('image_type'),
+  reviewNote: text('review_note'), // último pedido de ajuste da aprovação
+  approvalRequestedBy: integer('approval_requested_by').references(() => users.id, { onDelete: 'set null' }), // quem recebe o aviso de aprovado
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
 })
 
 export type NewCreative = typeof creatives.$inferInsert
-export type CreativeChanges = Partial<Pick<NewCreative, 'funnelId' | 'title' | 'account' | 'format' | 'owner' | 'stage'>>
+export type CreativeChanges = Partial<
+  Pick<NewCreative, 'funnelId' | 'title' | 'account' | 'format' | 'owner' | 'stage' | 'reviewNote' | 'approvalRequestedBy'>
+>
 
 // Nunca seleciona os bytes da imagem, só se ela existe.
 const view = {
@@ -47,6 +52,7 @@ const view = {
   format: creatives.format,
   owner: creatives.owner,
   stage: creatives.stage,
+  reviewNote: creatives.reviewNote,
   hasImage: sql<boolean>`${creatives.image} is not null`,
   createdAt: creatives.createdAt,
   updatedAt: creatives.updatedAt,
@@ -58,6 +64,11 @@ export function listCreatives(funnelId?: number) {
     .from(creatives)
     .where(funnelId ? eq(creatives.funnelId, funnelId) : undefined)
     .orderBy(asc(creatives.id))
+}
+
+export async function findCreative(id: number) {
+  const [row] = await db.select(view).from(creatives).where(eq(creatives.id, id))
+  return row
 }
 
 export async function creativeStage(id: number) {
@@ -146,4 +157,37 @@ export async function findCreativeImage(id: number) {
     .from(creatives)
     .where(eq(creatives.id, id))
   return row?.image && row.imageType ? { image: row.image, imageType: row.imageType } : undefined
+}
+
+// Cada aprovação da Flávia vira um aviso para todos na plataforma (sino + som). Some junto com o criativo.
+export const approvals = pgTable('creative_approvals', {
+  id: serial('id').primaryKey(),
+  creativeId: integer('creative_id')
+    .notNull()
+    .references(() => creatives.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export async function recordApproval(creativeId: number) {
+  await db.insert(approvals).values({ creativeId })
+}
+
+// Mais recentes primeiro; after = só as mais novas que esse id (o que o front já viu).
+export function listApprovals(after = 0, limit = 20) {
+  return db
+    .select({ id: approvals.id, createdAt: approvals.createdAt, creative: view })
+    .from(approvals)
+    .innerJoin(creatives, eq(creatives.id, approvals.creativeId))
+    .where(gt(approvals.id, after))
+    .orderBy(desc(approvals.id))
+    .limit(limit)
+}
+
+export async function requesterEmail(creativeId: number) {
+  const [row] = await db
+    .select({ email: users.email, name: users.name })
+    .from(creatives)
+    .innerJoin(users, eq(users.id, creatives.approvalRequestedBy))
+    .where(eq(creatives.id, creativeId))
+  return row
 }

@@ -10,6 +10,7 @@ import { assistantRoutes } from './routes/assistant.js'
 import { googleCallbackRoutes, integrationsRoutes } from './routes/integrations.js'
 import { creativesRoutes } from './routes/creatives.js'
 import { mcpRoutes } from './routes/mcp.js'
+import { governanceRoutes } from './routes/governance.js'
 
 z.config(z.locales.pt()) // mensagens de validação em português
 
@@ -31,6 +32,7 @@ await app.register(integrationsRoutes)
 await app.register(googleCallbackRoutes)
 await app.register(creativesRoutes)
 await app.register(mcpRoutes)
+await app.register(governanceRoutes)
 
 app.get('/health', async () => ({ status: 'ok' }))
 

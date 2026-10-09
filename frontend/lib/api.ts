@@ -30,6 +30,7 @@ export type Creative = {
   format: string;
   owner: string;
   stage: CreativeStage;
+  reviewNote: string | null; // último pedido de ajuste da aprovação
   hasImage: boolean;
   createdAt: string;
   updatedAt: string;
@@ -47,7 +48,28 @@ export type User = {
   name: string;
   email: string;
   createdAt: string;
+  role: Pick<Role, "id" | "name" | "permissions">;
 };
+
+export type Permission =
+  | "metrics.view"
+  | "metrics.manage"
+  | "kanban.view"
+  | "kanban.manage"
+  | "integrations.view"
+  | "integrations.manage"
+  | "governance.manage";
+
+export type Role = {
+  id: number;
+  name: string;
+  description: string;
+  permissions: Permission[];
+  isSystem: boolean;
+  createdAt: string;
+};
+
+export type GovernanceOverview = { roles: Role[]; users: User[] };
 
 export type AuthSession = { token: string; user: User };
 
@@ -138,6 +160,26 @@ export function getCurrentUser() {
   return apiRequest<User>("/auth/me", undefined, true);
 }
 
+export function getGovernance() {
+  return apiRequest<GovernanceOverview>("/governance", undefined, true);
+}
+
+export function createRole(input: Pick<Role, "name" | "description" | "permissions">) {
+  return apiRequest<Role>("/governance/roles", { method: "POST", body: JSON.stringify(input) }, true);
+}
+
+export function updateRole(id: number, input: Partial<Pick<Role, "name" | "description" | "permissions">>) {
+  return apiRequest<Role>(`/governance/roles/${id}`, { method: "PATCH", body: JSON.stringify(input) }, true);
+}
+
+export function deleteRole(id: number) {
+  return apiRequest<void>(`/governance/roles/${id}`, { method: "DELETE" }, true);
+}
+
+export function updateUserRole(id: number, roleId: number) {
+  return apiRequest<User>(`/governance/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ roleId }) }, true);
+}
+
 export function getMetrics(section: MetricSection) {
   return apiRequest<Metric[]>(`/metrics?section=${section}`, undefined, true);
 }
@@ -166,6 +208,35 @@ export function importMetrics(file: File) {
 export function getCreatives() {
   return apiRequest<Creative[]>("/creatives", undefined, true);
 }
+
+// Aviso de criativo aprovado pela Flávia (sino da plataforma). after = só os mais novos que esse id.
+export type ApprovalNotice = { id: number; createdAt: string; creative: Creative };
+
+export function getNotifications(after = 0) {
+  return apiRequest<ApprovalNotice[]>(`/notifications?after=${after}`, undefined, true);
+}
+
+// Manda o e-mail de aprovação e move o card para Revisão.
+export function sendCreativeForApproval(id: number) {
+  return apiRequest<Creative>(`/creatives/${id}/approval`, { method: "POST" }, true);
+}
+
+// Página pública de aprovação: o token do link do e-mail substitui o login.
+export type Approval = {
+  pending: boolean;
+  creative: Pick<Creative, "id" | "title" | "account" | "format" | "owner" | "stage" | "reviewNote" | "hasImage"> & { funnel: string | null };
+};
+export type ApprovalDecision = { decision: "aprovar" } | { decision: "ajustes"; note: string };
+
+export function getApproval(token: string) {
+  return apiRequest<Approval>(`/approvals/${encodeURIComponent(token)}`);
+}
+
+export function decideApproval(token: string, body: ApprovalDecision) {
+  return apiRequest<Approval>(`/approvals/${encodeURIComponent(token)}`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export const approvalImageUrl = (token: string) => `${API_URL}/approvals/${encodeURIComponent(token)}/image`;
 
 export function getFunnels() {
   return apiRequest<Funnel[]>("/funnels", undefined, true);
@@ -295,6 +366,34 @@ export type MetaAd = {
   type: string | null;
   hidden: boolean;
 };
+
+export type MetaTopAd = {
+  id: string;
+  name: string;
+  accountId: string;
+  accountName: string;
+  currency: string;
+  campaign: string | null;
+  adset: string | null;
+  creativeId: string | null;
+  title: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  type: string | null;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
+  leads: number;
+  purchases: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+};
+
+export function getMetaTopAds(from?: string, to?: string) {
+  return apiRequest<{ from: string; to: string; ads: MetaTopAd[] }>(`/meta/top-ads?${rangeParams(from, to)}`, undefined, true);
+}
 
 export function getMetaAds(accountId: string) {
   return apiRequest<{ accountId: string; ads: MetaAd[] }>(`/meta/ads?accountId=${encodeURIComponent(accountId)}`, undefined, true);

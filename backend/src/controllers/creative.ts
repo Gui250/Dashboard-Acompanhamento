@@ -7,45 +7,67 @@ import {
   defaultFunnel,
   deleteCreative,
   deleteFunnel,
+  findCreative,
   findCreativeImage,
   findFunnel,
   listCreatives,
+  listApprovals,
   listFunnels,
+  recordApproval,
+  requesterEmail,
   setCreativeImage,
   updateCreative,
   updateFunnel,
 } from '../models/creative.js'
-import { escapeHtml, sendEmail } from '../lib/email.js'
-import { webUrl } from './integration.js'
-import type { createCreativeBody, creativeParams, creativesQuery, funnelBody, updateCreativeBody, updateFunnelBody } from '../views/creative.js'
+import { sendEmail } from '../lib/email.js'
+import { approvalEmail, approvalToken, approvedEmail, readApprovalToken } from '../lib/approval.js'
+import { apiUrl, webUrl } from '../lib/urls.js'
+import type {
+  approvalBody,
+  approvalParams,
+  createCreativeBody,
+  creativeParams,
+  creativesQuery,
+  funnelBody,
+  notificationsQuery,
+  updateCreativeBody,
+  updateFunnelBody,
+} from '../views/creative.js'
 
 type Params = { Params: z.infer<typeof creativeParams> }
 const notFound = { message: 'Criativo não encontrado.' }
 const noFunnel = { message: 'Funil não encontrado.' }
 
-// Quem aprova os criativos: recebe um e-mail quando um card entra em Revisão.
-const APPROVER = 'flaviasobral@v4.company'
+// Quem aprova os criativos: recebe o e-mail com Aprovar / Pedir ajustes quando um card vai para Revisão.
+const APPROVER = 'flaviasobral@v4company.com'
+const noResend = 'E-mail não configurado: faltam RESEND_API_KEY e RESEND_FROM no servidor.'
 
 type Row = NonNullable<Awaited<ReturnType<typeof updateCreative>>>
 
+// Usuário logado (o token do MCP com MCP_API_KEY não tem usuário: null).
+const userId = (req: FastifyRequest) => Number((req.user as { sub?: string } | undefined)?.sub) || null
+
+// Link assinado para a página de aprovação; a imagem vai por URL da API (e-mail não carrega imagem com login).
 async function notifyApproval(c: Row) {
+  const token = approvalToken(c.id)
   const funnel = await findFunnel(c.funnelId)
-  const rows = [['Funil', funnel?.name ?? '-'], ['Conta', c.account], ['Formato', c.format], ['Responsável', c.owner]]
-  return sendEmail({
-    to: APPROVER,
-    subject: `Criativo aguardando aprovação: ${c.title}`,
-    html:
-      `<p>O criativo <strong>${escapeHtml(c.title)}</strong> entrou em <strong>Revisão</strong> e precisa da sua aprovação.</p>` +
-      `<ul>${rows.map(([k, v]) => `<li>${k}: ${escapeHtml(v)}</li>`).join('')}</ul>` +
-      `<p><a href="${webUrl()}/kanban">Abrir o kanban</a></p>`,
+  const mail = approvalEmail({
+    title: c.title,
+    account: c.account,
+    format: c.format,
+    owner: c.owner,
+    funnel: funnel?.name ?? null,
+    imageUrl: c.hasImage ? `${apiUrl()}/approvals/${token}/image` : null,
+    reviewUrl: `${webUrl()}/aprovacao/${token}`,
   })
+  return sendEmail({ to: APPROVER, ...mail })
 }
 
-// Fora do caminho da resposta: falha no e-mail vai para o log e não desfaz a mudança no kanban.
+// Arrastar para Revisão também avisa. Fora do caminho da resposta: falha no e-mail vai para o log e não desfaz o movimento.
 function notifyIfReview(req: FastifyRequest, c: Row, before?: string) {
   if (c.stage !== 'revisao' || before === 'revisao') return
   notifyApproval(c)
-    .then((sent) => sent || req.log.warn('e-mail de aprovação não enviado: faltam RESEND_API_KEY e RESEND_FROM'))
+    .then((sent) => sent || req.log.warn(noResend))
     .catch((e) => req.log.error(e, 'falha ao enviar e-mail de aprovação'))
 }
 
@@ -64,7 +86,7 @@ export function list(req: FastifyRequest<{ Querystring: z.infer<typeof creatives
 export async function create(req: FastifyRequest<{ Body: z.infer<typeof createCreativeBody> }>, reply: FastifyReply) {
   const funnel = await (req.body.funnelId ? findFunnel(req.body.funnelId) : defaultFunnel())
   if (!funnel) return reply.status(400).send(noFunnel)
-  const row = await createCreative({ ...req.body, funnelId: funnel.id })
+  const row = await createCreative({ ...req.body, funnelId: funnel.id, approvalRequestedBy: req.body.stage === 'revisao' ? userId(req) : null })
   notifyIfReview(req, row)
   return reply.status(201).send(row)
 }
@@ -72,7 +94,8 @@ export async function create(req: FastifyRequest<{ Body: z.infer<typeof createCr
 export async function update(req: FastifyRequest<Params & { Body: z.infer<typeof updateCreativeBody> }>, reply: FastifyReply) {
   if (req.body.funnelId && !(await findFunnel(req.body.funnelId))) return reply.status(400).send(noFunnel)
   const before = req.body.stage === 'revisao' ? await creativeStage(req.params.id) : undefined
-  const row = await updateCreative(req.params.id, req.body)
+  const entering = before !== undefined && before !== 'revisao' // quem move para Revisão recebe o aviso de aprovado
+  const row = await updateCreative(req.params.id, entering ? { ...req.body, approvalRequestedBy: userId(req) } : req.body)
   if (!row) return reply.status(404).send(notFound)
   notifyIfReview(req, row, before)
   return row
@@ -125,4 +148,87 @@ export async function image(req: FastifyRequest<Params>, reply: FastifyReply) {
   const found = await findCreativeImage(req.params.id)
   if (!found) return reply.status(404).send({ message: 'Imagem não encontrada.' })
   return reply.header('content-type', found.imageType).header('x-content-type-options', 'nosniff').send(found.image)
+}
+
+// Botão "Enviar para aprovação": manda o e-mail primeiro e só então move para Revisão (e limpa o pedido de ajuste
+// anterior); se o e-mail falhar, nada muda e o erro volta para a tela. Reenviar com o card já em Revisão vale.
+export async function sendForApproval(req: FastifyRequest<Params>, reply: FastifyReply) {
+  const found = await findCreative(req.params.id)
+  if (!found) return reply.status(404).send(notFound)
+  let sent: boolean
+  try {
+    sent = await notifyApproval({ ...found, stage: 'revisao' })
+  } catch (e) {
+    req.log.error(e, 'falha ao enviar e-mail de aprovação')
+    return reply.status(502).send({ message: 'O Resend recusou o envio do e-mail. Veja o log do servidor.' })
+  }
+  if (!sent) return reply.status(503).send({ message: noResend })
+  return updateCreative(found.id, { stage: 'revisao', reviewNote: null, approvalRequestedBy: userId(req) })
+}
+
+// --- Página pública de aprovação (link do e-mail) ---
+const invalidLink = { message: 'Link de aprovação inválido ou expirado.' }
+
+async function fromToken(token: string) {
+  const id = readApprovalToken(token)
+  return id ? findCreative(id) : undefined
+}
+
+export async function approvalShow(req: FastifyRequest<{ Params: z.infer<typeof approvalParams> }>, reply: FastifyReply) {
+  const c = await fromToken(req.params.token)
+  if (!c) return reply.status(404).send(invalidLink)
+  const funnel = await findFunnel(c.funnelId)
+  const { id, title, account, format, owner, stage, reviewNote, hasImage } = c
+  return { pending: stage === 'revisao', creative: { id, title, account, format, owner, stage, reviewNote, hasImage, funnel: funnel?.name ?? null } }
+}
+
+export async function approvalImage(req: FastifyRequest<{ Params: z.infer<typeof approvalParams> }>, reply: FastifyReply) {
+  const id = readApprovalToken(req.params.token)
+  const found = id && (await findCreativeImage(id))
+  if (!found) return reply.status(404).send({ message: 'Imagem não encontrada.' })
+  return reply
+    .header('content-type', found.imageType)
+    .header('x-content-type-options', 'nosniff')
+    .header('cache-control', 'private, max-age=3600')
+    .send(found.image)
+}
+
+// Só decide enquanto o card está em Revisão: depois disso o link vira só consulta (não dá para decidir duas vezes).
+export async function approvalDecide(
+  req: FastifyRequest<{ Params: z.infer<typeof approvalParams>; Body: z.infer<typeof approvalBody> }>,
+  reply: FastifyReply,
+) {
+  const c = await fromToken(req.params.token)
+  if (!c) return reply.status(404).send(invalidLink)
+  if (c.stage !== 'revisao') return reply.status(409).send({ message: 'Este criativo já saiu de Revisão: a decisão já foi tomada.' })
+  const body = req.body
+  await updateCreative(c.id, body.decision === 'aprovar' ? { stage: 'aprovado', reviewNote: null } : { stage: 'producao', reviewNote: body.note })
+  if (body.decision === 'aprovar') {
+    await recordApproval(c.id) // vira aviso com som para quem estiver na plataforma
+    notifyApproved(req, c, req.params.token)
+  }
+  return approvalShow(req, reply)
+}
+
+// E-mail de "aprovado" para quem mandou para aprovação. Fora do caminho da resposta, como os outros avisos.
+function notifyApproved(req: FastifyRequest, c: Row, token: string) {
+  requesterEmail(c.id)
+    .then(async (to) => {
+      if (!to) return req.log.warn({ creative: c.id }, 'aprovado sem e-mail: ninguém registrado como solicitante')
+      const mail = approvedEmail({
+        title: c.title,
+        account: c.account,
+        format: c.format,
+        requester: to.name.split(' ')[0],
+        imageUrl: c.hasImage ? `${apiUrl()}/approvals/${token}/image` : null,
+        kanbanUrl: `${webUrl()}/kanban`,
+      })
+      if (!(await sendEmail({ to: to.email, ...mail }))) req.log.warn(noResend)
+    })
+    .catch((e) => req.log.error(e, 'falha ao enviar e-mail de aprovado'))
+}
+
+// Sino da plataforma: aprovações mais novas que "after".
+export function notifications(req: FastifyRequest<{ Querystring: z.infer<typeof notificationsQuery> }>) {
+  return listApprovals(req.query.after)
 }

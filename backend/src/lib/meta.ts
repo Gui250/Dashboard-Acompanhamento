@@ -116,6 +116,52 @@ export async function campaignInsights(token: string, accountId: string, since: 
   return rows.map((r) => ({ id: r.campaign_id, name: r.campaign_name, ...toMetrics(r) })).sort((a, b) => b.spend - a.spend)
 }
 
+type AdInsightRow = InsightRow & { ad_id: string; ad_name: string; campaign_name?: string; adset_name?: string }
+
+// Uma página dos anúncios que mais gastaram na conta. O ranking final (leads, CTR…) é feito em cima desse recorte.
+export async function adInsights(token: string, accountId: string, since: string, until: string, limit = 40) {
+  const range = encodeURIComponent(JSON.stringify({ since, until }))
+  const act = `act_${accountId.replace(/^act_/, '')}`
+  const page = await graph<Paged<AdInsightRow>>(
+    token,
+    `/${act}/insights?level=ad&fields=ad_id,ad_name,campaign_name,adset_name,spend,impressions,clicks,reach,actions&time_range=${range}&sort=spend_descending&limit=${limit}`,
+  )
+  return page.data
+    .map((r) => ({
+      id: r.ad_id,
+      name: r.ad_name,
+      campaign: r.campaign_name ?? null,
+      adset: r.adset_name ?? null,
+      ...toMetrics(r),
+    }))
+    .filter((ad) => ad.spend > 0 || ad.impressions > 0)
+}
+
+type CreativeFields = { id?: string; title?: string; body?: string; image_url?: string; thumbnail_url?: string; object_type?: string }
+
+// Criativo (título, texto, imagem) dos anúncios já ranqueados. Falha de um id não derruba os outros.
+export async function adCreatives(token: string, ids: string[]) {
+  const out = new Map<string, { creativeId: string | null; title: string | null; body: string | null; imageUrl: string | null; type: string | null }>()
+  const fields = 'creative{id,title,body,image_url,thumbnail_url,object_type}'
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50)
+    const body = await graph<Record<string, { creative?: CreativeFields }>>(token, `/?ids=${batch.join(',')}&fields=${fields}`).catch(
+      (): Record<string, { creative?: CreativeFields }> => ({}),
+    )
+    for (const id of batch) {
+      const c = body[id]?.creative
+      out.set(id, {
+        creativeId: c?.id ?? null,
+        title: c?.title ?? null,
+        body: c?.body ?? null,
+        imageUrl: c?.image_url ?? c?.thumbnail_url ?? null,
+        type: c?.object_type ?? null,
+      })
+    }
+  }
+  return out
+}
+
 // Insights por conta em lotes de 10 chamadas paralelas.
 export async function accountInsights(token: string, accounts: AdAccount[], since: string, until: string) {
   const fields = 'spend,impressions,clicks,ctr,cpc,cpm,reach,actions'

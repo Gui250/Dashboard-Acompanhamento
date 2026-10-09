@@ -54,3 +54,20 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* Carimbo do aviso de aprovação: cai grande e gira até assentar sobre a miniatura (o som bate junto, em ~430ms). */
+.approval-stamp {
+  animation: approval-stamp 420ms cubic-bezier(.2, 1.35, .45, 1) 180ms both;
+  transform: rotate(-11deg);
+}
+.approval-press { animation: approval-press 260ms ease-out 420ms both; }
+@keyframes approval-stamp {
+  0% { opacity: 0; transform: rotate(-24deg) scale(2.6); }
+  58% { opacity: 1; transform: rotate(-11deg) scale(.9); }
+  100% { opacity: 1; transform: rotate(-11deg) scale(1); }
+}
+@keyframes approval-press {
+  0% { transform: scale(1); }
+  35% { transform: scale(.965); }
+  100% { transform: scale(1); }
+}

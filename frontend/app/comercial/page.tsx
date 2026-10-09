@@ -6,6 +6,8 @@ import { MetricDialog } from "@/components/dashboard/metric-dialog";
 import { ImportDialog } from "@/components/dashboard/import-dialog";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { Metric } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
+import { can } from "@/lib/permissions";
 
 const TimelineCard = dynamic(() => import("@/components/dashboard/dashboard-charts").then((mod) => mod.TimelineCard), { ssr: false, loading: () => <ChartSkeleton /> });
 const RankingCard = dynamic(() => import("@/components/dashboard/dashboard-charts").then((mod) => mod.RankingCard), { ssr: false, loading: () => <ChartSkeleton /> });
@@ -17,6 +19,7 @@ function metricValue(metrics: Metric[], key: string) {
 }
 
 export default function ComercialPage() {
+  const { user } = useAuth();
   const { metrics, timeline, ranking, isLoading, error, refresh } = useDashboardData("comercial", "faturamento", "vendas");
   const kpis = [
     { label: "Faturamento", keyName: "faturamento", value: metricValue(metrics, "faturamento"), helper: "Soma do período registrado" },
@@ -31,7 +34,7 @@ export default function ComercialPage() {
         eyebrow="Pulso comercial"
         title="Da oportunidade ao resultado."
         description="Acompanhe a cadência de receita, o volume do funil e quem está puxando o resultado comercial."
-        action={<div className="flex flex-wrap gap-2"><ImportDialog onImported={refresh} /><MetricDialog section="comercial" onCreated={refresh} /></div>}
+        action={can(user, "metrics.manage") ? <div className="flex flex-wrap gap-2"><ImportDialog onImported={refresh} /><MetricDialog section="comercial" onCreated={refresh} /></div> : <span className="rounded-full border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground">Somente leitura</span>}
       />
       {error ? <DashboardError message={error} onRetry={refresh} /> : (
         <>

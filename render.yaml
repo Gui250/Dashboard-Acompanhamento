@@ -33,7 +33,7 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: https://v4-dashboard-api.onrender.com/integrations/google/callback
-      # E-mail de aprovação do kanban via Resend: RESEND_FROM de domínio verificado (ex.: Kanban V4 <kanban@v4.company>).
+      # E-mail de aprovação do kanban via Resend: RESEND_FROM de domínio verificado (ex.: Kanban V4 <kanban@v4company.com>).
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM

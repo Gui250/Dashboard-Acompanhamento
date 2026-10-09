@@ -8,9 +8,12 @@ import { ImportDialog } from "@/components/dashboard/import-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { Metric } from "@/lib/api";
+import { useAuth } from "@/components/auth/auth-provider";
+import { can } from "@/lib/permissions";
 
 const TimelineCard = dynamic(() => import("@/components/dashboard/dashboard-charts").then((mod) => mod.TimelineCard), { ssr: false, loading: () => <ChartSkeleton /> });
 const adsSection = () => import("@/components/dashboard/ads-accounts-section");
+const TopCreativesSection = dynamic(() => import("@/components/dashboard/top-creatives-section").then((mod) => mod.TopCreativesSection), { ssr: false, loading: () => <AdsSkeleton /> });
 const MetaAccountsSection = dynamic(() => adsSection().then((mod) => mod.MetaAccountsSection), { ssr: false, loading: () => <AdsSkeleton /> });
 const GoogleAccountsSection = dynamic(() => adsSection().then((mod) => mod.GoogleAccountsSection), { ssr: false, loading: () => <AdsSkeleton /> });
 
@@ -19,6 +22,7 @@ function total(metrics: Metric[], key: string) {
 }
 
 export default function OperacionalPage() {
+  const { user } = useAuth();
   const { metrics, timeline, ranking: accounts, isLoading, error, refresh } = useDashboardData("operacional", "criativos_em_esteira", "contas_ativas");
   const accountRecords = metrics.filter((metric) => metric.key === "contas_ativas" && metric.dimension);
   const kpis = [
@@ -33,8 +37,8 @@ export default function OperacionalPage() {
       <PageIntro
         eyebrow="Ritmo operacional"
         title="Clareza para fazer fluir."
-        description="Uma leitura direta do volume criativo e das contas que passam pela operação — sem perder o contexto de cada lead."
-        action={<div className="flex flex-wrap gap-2"><ImportDialog onImported={refresh} /><MetricDialog section="operacional" onCreated={refresh} /></div>}
+        description="Volume da esteira, criativos que mais performam e as contas que passam pela operação."
+        action={can(user, "metrics.manage") ? <div className="flex flex-wrap gap-2"><ImportDialog onImported={refresh} /><MetricDialog section="operacional" onCreated={refresh} /></div> : <span className="rounded-full border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground">Somente leitura</span>}
       />
       {error ? <DashboardError message={error} onRetry={refresh} /> : (
         <>
@@ -69,6 +73,7 @@ export default function OperacionalPage() {
           {!isLoading && <RecentMetrics metrics={metrics} />}
         </>
       )}
+      <TopCreativesSection />
       <MetaAccountsSection />
       <GoogleAccountsSection />
     </div>

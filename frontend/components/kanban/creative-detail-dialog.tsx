@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarDays, ImageMinus, Loader2, Save, Trash2, UploadCloud } from "lucide-react";
+import { CalendarDays, ImageMinus, Loader2, Maximize2, MessageSquareWarning, Save, Send, Trash2, UploadCloud } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CreativeFormFields, creativeFormSchema, stageOptions, type CreativeFormValues } from "@/components/kanban/creative-form";
 import { CreativeImagePicker, ProtectedCreativeImage } from "@/components/kanban/creative-image";
-import { deleteCreative, removeCreativeImage, updateCreative, uploadCreativeImage, type Creative } from "@/lib/api";
+import { deleteCreative, removeCreativeImage, sendCreativeForApproval, updateCreative, uploadCreativeImage, type Creative } from "@/lib/api";
 
 type Props = {
   creative: Creative;
@@ -24,6 +24,8 @@ export function CreativeDetailDialog({ creative, open, onOpenChange, onUpdated, 
   const [isImageBusy, setIsImageBusy] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const form = useForm<CreativeFormValues>({
     resolver: zodResolver(creativeFormSchema),
@@ -37,7 +39,7 @@ export function CreativeDetailDialog({ creative, open, onOpenChange, onUpdated, 
   }, [creative, form]);
 
   function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen && (form.formState.isSubmitting || isImageBusy || isDeleting)) return;
+    if (!nextOpen && (form.formState.isSubmitting || isImageBusy || isDeleting || isSending)) return;
     if (!nextOpen) {
       setConfirmDelete(false);
       setImageFile(null);
@@ -88,6 +90,21 @@ export function CreativeDetailDialog({ creative, open, onOpenChange, onUpdated, 
     }
   }
 
+  // E-mail com Aprovar / Pedir ajustes para a aprovadora; o card vai para Revisão.
+  async function sendForApproval() {
+    setIsSending(true);
+    setActionError(null);
+    try {
+      const updated = await sendCreativeForApproval(creative.id);
+      onUpdated(updated);
+      toast.success(creative.stage === "revisao" ? "E-mail de aprovação reenviado" : "Enviado para aprovação", { description: "flaviasobral@v4company.com recebeu o criativo para aprovar." });
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "Não foi possível enviar para aprovação.");
+    } finally {
+      setIsSending(false);
+    }
+  }
+
   async function removeCreative() {
     setIsDeleting(true);
     setActionError(null);
@@ -114,9 +131,28 @@ export function CreativeDetailDialog({ creative, open, onOpenChange, onUpdated, 
               <span className="rounded-md bg-white/10 px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wider text-white/65">{stageLabel}</span>
               <span className="font-mono text-[9px] uppercase tracking-wider text-white/35">Criativo #{creative.id}</span>
             </div>
-            <div className="mt-5 overflow-hidden rounded-lg border border-white/10 bg-white/[0.04]">
+            <button
+              type="button"
+              onClick={() => setInspecting(true)}
+              disabled={!creative.hasImage}
+              aria-label="Inspecionar o criativo em tamanho real"
+              className="group relative mt-5 block w-full overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default"
+            >
               <ProtectedCreativeImage creative={creative} className="aspect-[4/3] w-full" />
+              {creative.hasImage && <span className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs font-semibold opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"><Maximize2 className="h-3.5 w-3.5" />Inspecionar</span>}
+            </button>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <Button type="button" variant="outline" className="border-white/15 bg-white/5 text-white hover:bg-white/10" disabled={!creative.hasImage} onClick={() => setInspecting(true)}><Maximize2 className="h-4 w-4" />Inspecionar</Button>
+              <Button type="button" disabled={isSending} onClick={() => void sendForApproval()}>
+                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{creative.stage === "revisao" ? "Reenviar aprovação" : "Enviar para aprovação"}
+              </Button>
             </div>
+            {creative.reviewNote && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+                <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" />
+                <p><strong>Ajustes pedidos:</strong> {creative.reviewNote}</p>
+              </div>
+            )}
             <div className="mt-5">
               <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-primary">Pré-visualização</p>
               <h3 className="mt-2 font-display text-2xl font-bold leading-tight tracking-tight">{creative.title}</h3>
@@ -168,6 +204,15 @@ export function CreativeDetailDialog({ creative, open, onOpenChange, onUpdated, 
           </section>
         </div>
       </DialogContent>
+      <Dialog open={inspecting} onOpenChange={setInspecting}>
+        <DialogContent className="max-w-6xl border-0 bg-[#0b0b0b] p-3 text-white sm:p-4">
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-base text-white">{creative.title}</DialogTitle>
+            <DialogDescription className="text-white/50">{creative.account} · {creative.format}</DialogDescription>
+          </DialogHeader>
+          <ProtectedCreativeImage creative={creative} fit="contain" className="h-[78vh] w-full rounded-md bg-black" />
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

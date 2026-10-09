@@ -3,7 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { createMcpHandler, McpServer, type CallToolResult } from '@modelcontextprotocol/server'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { z } from 'zod'
-import { authenticate } from './auth.js'
+import { authenticate, requirePermission } from './auth.js'
+import { apiUrl } from '../lib/urls.js'
 import { createMetricBody, importContentBody, metricFilters, seriesQuery, templateTool } from '../views/metric.js'
 import { createCreativeBody, creativesQuery, funnelBody, funnelChanges, updateCreativeBody } from '../views/creative.js'
 import { dateRangeQuery, googleCampaignsQuery, metaAdHiddenBody, metaAdParams, metaAdsQuery, metaCampaignsQuery } from '../views/integration.js'
@@ -106,17 +107,26 @@ const TOOLS: Tool[] = [
     name: 'create_creative',
     description:
       'Cria um criativo no kanban de um funil (funnelId de list_funnels; omitido = funil padrão). stage padrão: briefing. ' +
-      'Entrar em revisao manda e-mail de aprovação para flaviasobral@v4.company.',
+      'Entrar em revisao manda e-mail de aprovação para flaviasobral@v4company.com.',
     method: 'POST',
     url: '/creatives',
     input: createCreativeBody,
   },
   {
     name: 'update_creative',
-    description: 'Atualiza campos de um criativo pelo id (ex.: mover de etapa com stage, trocar de funil com funnelId). Mover para revisao manda e-mail de aprovação para flaviasobral@v4.company.',
+    description: 'Atualiza campos de um criativo pelo id (ex.: mover de etapa com stage, trocar de funil com funnelId). Mover para revisao manda e-mail de aprovação para flaviasobral@v4company.com.',
     method: 'PATCH',
     url: '/creatives/:id',
     input: updateCreativeBody.extend({ id: z.number().int().positive() }),
+  },
+  {
+    name: 'send_creative_for_approval',
+    description:
+      'Envia o criativo (id) para aprovação: manda o e-mail com a imagem e os botões Aprovar / Pedir ajustes para flaviasobral@v4company.com e move o card para revisao. ' +
+      'Se o card já está em revisao, reenvia o e-mail. A decisão dela move para aprovado, ou volta para producao com o pedido em reviewNote.',
+    method: 'POST',
+    url: '/creatives/:id/approval',
+    input: z.object({ id: z.number().int().positive() }),
   },
   {
     name: 'delete_creative',
@@ -139,6 +149,15 @@ const TOOLS: Tool[] = [
     method: 'GET',
     url: '/meta/campaigns',
     input: metaCampaignsQuery,
+  },
+  {
+    name: 'meta_top_ads',
+    description:
+      'Criativos da Meta que mais performam no período (padrão: últimos 30 dias), em todas as contas: gasto, impressões, cliques, alcance, leads, compras, CTR, CPC, CPM, imagem, título e conta. ' +
+      'A lista vem ordenada por gasto e omite anúncios ocultos no dashboard. Reordene por leads, compras ou CTR se o critério for outro.',
+    method: 'GET',
+    url: '/meta/top-ads',
+    input: dateRangeQuery,
   },
   {
     name: 'meta_ads_creatives',
@@ -205,11 +224,7 @@ function buildServer(app: FastifyInstance) {
   return server
 }
 
-// Endereço público da API: o Render preenche RENDER_EXTERNAL_URL; local, a porta do .env.
-function publicUrl(url: string, query: URLSearchParams) {
-  const base = process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${process.env.PORT ?? 3333}`
-  return `${base}${url}${query.size ? `?${query}` : ''}`
-}
+const publicUrl = (url: string, query: URLSearchParams) => `${apiUrl()}${url}${query.size ? `?${query}` : ''}`
 
 // Texto (ex.: CSV) vai inline; binário (ex.: xlsx) vai como recurso em base64.
 function fileResult(body: Buffer, mimeType: string, link: string | false | undefined) {
@@ -228,7 +243,9 @@ async function mcpAuth(req: FastifyRequest, reply: FastifyReply) {
   const key = process.env.MCP_API_KEY
   const given = req.headers.authorization?.replace(/^Bearer /i, '') ?? ''
   if (key && timingSafeEqual(digest(given), digest(key))) return
-  return authenticate(req, reply)
+  await authenticate(req, reply)
+  if (reply.sent) return
+  return requirePermission('governance.manage')(req, reply)
 }
 
 export async function mcpRoutes(app: FastifyInstance) {

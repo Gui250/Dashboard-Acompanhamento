@@ -119,6 +119,29 @@ const campaignsView = <T extends z.ZodRawShape>(campaign: T) =>
 
 export const metaCampaignsView = campaignsView(metrics)
 
+// Recorte dos anúncios com veiculação, já com o criativo. O cliente reordena por leads, compras, CTR ou gasto.
+export const metaTopAdsView = z.object({
+  from: z.string(),
+  to: z.string(),
+  ads: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      accountId: z.string(),
+      accountName: z.string(),
+      currency: z.string(),
+      campaign: z.string().nullable(),
+      adset: z.string().nullable(),
+      creativeId: z.string().nullable(),
+      title: z.string().nullable(),
+      body: z.string().nullable(),
+      imageUrl: z.string().nullable(),
+      type: z.string().nullable(),
+      ...metrics,
+    }),
+  ),
+})
+
 // Anúncios ativos (com o criativo) de uma conta da Meta; hidden = escondido do dashboard.
 export const metaAdsQuery = z.object({ accountId: metaCampaignsQuery.shape.accountId })
 export const metaAdParams = z.object({ id: z.string().regex(/^\d+$/) })

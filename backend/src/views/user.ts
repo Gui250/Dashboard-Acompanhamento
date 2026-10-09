@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { permissions } from '../models/user.js'
 
 const email = z.email().trim().toLowerCase()
 
@@ -19,6 +20,11 @@ export const userView = z.object({
   name: z.string(),
   email: z.string(),
   createdAt: z.date(),
+  role: z.object({
+    id: z.number(),
+    name: z.string(),
+    permissions: z.array(z.enum(permissions)),
+  }),
 })
 
 export const sessionView = z.object({ token: z.string(), user: userView })
