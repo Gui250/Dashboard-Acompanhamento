@@ -1,8 +1,8 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { z } from 'zod'
-import { COLUMN_OF, parseMetricsSheet, metricsTemplate } from '../lib/spreadsheet.js'
+import { COLUMN_OF, parseMetricsSheet, metricsTemplate, templateRows } from '../lib/spreadsheet.js'
 import { createMetric, createMetrics, listMetrics, metricSeries } from '../models/metric.js'
-import { createMetricBody, type dashboardQuery, type importContentBody, type metricFilters, type seriesQuery } from '../views/metric.js'
+import { createMetricBody, type dashboardQuery, type importContentBody, type metricFilters, type seriesQuery, type templateQuery } from '../views/metric.js'
 
 export async function create(req: FastifyRequest<{ Body: z.infer<typeof createMetricBody> }>, reply: FastifyReply) {
   return reply.status(201).send(await createMetric(req.body))
@@ -57,10 +57,10 @@ async function importRows(rows: ReturnType<typeof parseMetricsSheet>, reply: Fas
   return reply.status(201).send({ imported: valid.length })
 }
 
-export function template(req: FastifyRequest<{ Querystring: { format: 'xlsx' | 'csv' } }>, reply: FastifyReply) {
-  const { format } = req.query
+export function template(req: FastifyRequest<{ Querystring: z.infer<typeof templateQuery> }>, reply: FastifyReply) {
+  const { format, ...prefill } = req.query
   return reply
     .header('content-type', format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     .header('content-disposition', `attachment; filename="template-metricas.${format}"`)
-    .send(metricsTemplate(format))
+    .send(metricsTemplate(format, templateRows(prefill)))
 }

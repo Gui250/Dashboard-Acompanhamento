@@ -53,4 +53,21 @@ export const importContentBody = z.object({
   content: z.string().min(1),
 })
 
-export const templateQuery = z.object({ format: z.enum(['xlsx', 'csv']).default('xlsx') })
+// Listas por vírgula na URL (o MCP manda arrays, que viram "a,b" na querystring).
+const list = z
+  .string()
+  .optional()
+  .transform((s) => s?.split(',').map((v) => v.trim()).filter(Boolean))
+
+export const templateQuery = z
+  .object({ format: z.enum(['xlsx', 'csv']).default('xlsx'), section: section.optional(), keys: list, dimensions: list, date: isoDate.optional() })
+  .refine((q) => !q.keys?.length || q.section, { message: 'Informe a section junto com as keys.', path: ['section'] })
+
+// Mesmos campos, com arrays de verdade, para a tool do MCP.
+export const templateTool = z.object({
+  format: z.enum(['xlsx', 'csv']).default('csv'),
+  section: section.optional(),
+  keys: z.array(z.string().trim().min(1)).optional(),
+  dimensions: z.array(z.string().trim().min(1)).optional(),
+  date: isoDate.optional(),
+})

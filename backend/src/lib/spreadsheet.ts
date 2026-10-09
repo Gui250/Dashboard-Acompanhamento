@@ -54,8 +54,17 @@ export function parseMetricsSheet(input: Buffer | string) {
   })
 }
 
-export function metricsTemplate(format: 'xlsx' | 'csv'): Buffer {
-  const sheet = XLSX.utils.aoa_to_sheet([HEADERS, ...EXAMPLES])
+export type TemplatePrefill = { section?: string; keys?: string[]; dimensions?: string[]; date?: string }
+
+// Sem keys = linhas de exemplo. Com keys = uma linha por métrica × dimensão, com o valor em branco para preencher.
+export function templateRows({ section, keys, dimensions, date }: TemplatePrefill): (string | number)[][] {
+  if (!keys?.length) return EXAMPLES
+  const dims = dimensions?.length ? dimensions : ['']
+  return keys.flatMap((key) => dims.map((dim) => [section ?? '', key, dim, '', date ?? '']))
+}
+
+export function metricsTemplate(format: 'xlsx' | 'csv', rows = EXAMPLES): Buffer {
+  const sheet = XLSX.utils.aoa_to_sheet([HEADERS, ...rows])
   if (format === 'csv') return Buffer.from('﻿' + XLSX.utils.sheet_to_csv(sheet, { FS: ';' }), 'utf8')
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, sheet, 'metricas')
