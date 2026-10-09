@@ -113,13 +113,8 @@ export function refreshQuery<T>(key: string, fetcher: () => Promise<T>) {
 
 export function touchStale(prefix: string) {
   for (const [key, entry] of memory) {
-    if (key.startsWith(prefix)) entry.updatedAt = 0;
-  }
-  if (typeof window === "undefined") return;
-  for (let index = 0; index < sessionStorage.length; index += 1) {
-    const storageKey = sessionStorage.key(index);
-    if (!storageKey?.startsWith(STORAGE_PREFIX + prefix)) continue;
-    const queryKey = storageKey.slice(STORAGE_PREFIX.length);
-    if (!memory.has(queryKey)) ensure(queryKey).updatedAt = 0;
+    if (!key.startsWith(prefix)) continue;
+    entry.updatedAt = 0;
+    if (entry.data !== undefined) writeSession(key, entry.data, 0);
   }
 }

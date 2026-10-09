@@ -1,13 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Building2, ChevronRight, UserRound } from "lucide-react";
-import { DashboardError, KpiGrid, LoadingDashboard, PageIntro, RecentMetrics, TimelineCard } from "@/components/dashboard/dashboard-parts";
-import { MetaAccountsSection } from "@/components/dashboard/meta-accounts-section";
+import { ChartSkeleton, DashboardError, KpiGrid, LoadingDashboard, PageIntro, RecentMetrics } from "@/components/dashboard/dashboard-parts";
 import { MetricDialog } from "@/components/dashboard/metric-dialog";
 import { ImportDialog } from "@/components/dashboard/import-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { Metric } from "@/lib/api";
+
+const TimelineCard = dynamic(() => import("@/components/dashboard/dashboard-charts").then((mod) => mod.TimelineCard), { ssr: false, loading: () => <ChartSkeleton /> });
+const MetaAccountsSection = dynamic(() => import("@/components/dashboard/meta-accounts-section").then((mod) => mod.MetaAccountsSection), { ssr: false, loading: () => <LoadingDashboard /> });
 
 function total(metrics: Metric[], key: string) {
   return metrics.filter((metric) => metric.key === key).reduce((sum, metric) => sum + metric.value, 0);

@@ -3,7 +3,7 @@
 import { format, subDays } from "date-fns";
 import { Megaphone } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { DashboardError, LoadingDashboard } from "@/components/dashboard/dashboard-parts";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Input } from "@/components/ui/input";
 import { ApiError, getMetaAccounts, type MetaAccount, type MetaAccountsReport } from "@/lib/api";
+import { useQuery } from "@/hooks/use-query";
 import { cn } from "@/lib/utils";
 
 const PERIODS = [7, 30, 90] as const;
@@ -25,28 +26,22 @@ const STATUS_STYLE: Record<MetaAccount["status"], string> = {
 
 export function MetaAccountsSection() {
   const [days, setDays] = useState<(typeof PERIODS)[number]>(30);
-  const [report, setReport] = useState<MetaAccountsReport | null>(null);
-  const [notConfigured, setNotConfigured] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [hideEmpty, setHideEmpty] = useState(false);
-
-  const load = useCallback(() => {
+  const range = useMemo(() => {
     const now = new Date();
-    setLoading(true);
-    setError(null);
-    setNotConfigured(false);
-    getMetaAccounts(format(subDays(now, days - 1), "yyyy-MM-dd"), format(now, "yyyy-MM-dd"))
-      .then(setReport)
-      .catch((err: Error) => {
-        if (err instanceof ApiError && err.status === 409) setNotConfigured(true);
-        else setError(err.message);
-      })
-      .finally(() => setLoading(false));
+    return { from: format(subDays(now, days - 1), "yyyy-MM-dd"), to: format(now, "yyyy-MM-dd") };
   }, [days]);
-
-  useEffect(load, [load]);
+  const { data, error, isLoading, refresh } = useQuery<MetaAccountsReport | null>(
+    `meta:${range.from}:${range.to}`,
+    () => getMetaAccounts(range.from, range.to).catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === 409) return null;
+      throw err;
+    }),
+    60_000,
+  );
+  const report = data ?? undefined;
+  const notConfigured = data === null;
 
   const currency = report?.accounts[0]?.currency ?? "BRL";
   const money = useMemo(() => new Intl.NumberFormat("pt-BR", { style: "currency", currency }), [currency]);
@@ -69,7 +64,7 @@ export function MetaAccountsSection() {
       </Card>
     );
   }
-  if (error) return <DashboardError message={error} onRetry={load} />;
+  if (error) return <DashboardError message={error} onRetry={refresh} />;
 
   const t = report?.totals;
   const kpis = t && [
@@ -96,7 +91,7 @@ export function MetaAccountsSection() {
         </div>
       </div>
 
-      {loading || !report || !kpis ? <LoadingDashboard /> : (
+      {isLoading || !report || !kpis ? <LoadingDashboard /> : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             {kpis.map(([label, value]) => (

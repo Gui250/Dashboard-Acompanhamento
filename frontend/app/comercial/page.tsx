@@ -1,10 +1,14 @@
 "use client";
 
-import { DashboardError, KpiGrid, LoadingDashboard, PageIntro, RankingCard, RecentMetrics, TimelineCard } from "@/components/dashboard/dashboard-parts";
+import dynamic from "next/dynamic";
+import { ChartSkeleton, DashboardError, KpiGrid, LoadingDashboard, PageIntro, RecentMetrics } from "@/components/dashboard/dashboard-parts";
 import { MetricDialog } from "@/components/dashboard/metric-dialog";
 import { ImportDialog } from "@/components/dashboard/import-dialog";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { Metric } from "@/lib/api";
+
+const TimelineCard = dynamic(() => import("@/components/dashboard/dashboard-charts").then((mod) => mod.TimelineCard), { ssr: false, loading: () => <ChartSkeleton /> });
+const RankingCard = dynamic(() => import("@/components/dashboard/dashboard-charts").then((mod) => mod.RankingCard), { ssr: false, loading: () => <ChartSkeleton /> });
 
 function metricValue(metrics: Metric[], key: string) {
   const entries = metrics.filter((metric) => metric.key === key);

@@ -1,12 +1,58 @@
 "use client";
 
-import { useEffect, useId, useState, type DragEvent } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent } from "react";
 import { FileImage, ImageOff, UploadCloud, X } from "lucide-react";
 import { getCreativeImage, type Creative } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const IMAGE_SLOTS = 3;
+const imageUrls = new Map<string, string>();
+const imageRequests = new Map<string, Promise<string>>();
+let imageSlots = 0;
+const imageWaiters: Array<() => void> = [];
+
+function imageKey(creative: Pick<Creative, "id" | "updatedAt">) {
+  return `${creative.id}:${creative.updatedAt}`;
+}
+
+function takeImageSlot() {
+  if (imageSlots < IMAGE_SLOTS) {
+    imageSlots += 1;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => imageWaiters.push(resolve));
+}
+
+function freeImageSlot() {
+  imageSlots -= 1;
+  const next = imageWaiters.shift();
+  if (!next) return;
+  imageSlots += 1;
+  next();
+}
+
+function loadCreativeImage(creative: Pick<Creative, "id" | "updatedAt">) {
+  const key = imageKey(creative);
+  const cached = imageUrls.get(key);
+  if (cached) return Promise.resolve(cached);
+  const pending = imageRequests.get(key);
+  if (pending) return pending;
+  const request = takeImageSlot()
+    .then(() => getCreativeImage(creative.id))
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      imageUrls.set(key, url);
+      return url;
+    })
+    .finally(() => {
+      imageRequests.delete(key);
+      freeImageSlot();
+    });
+  imageRequests.set(key, request);
+  return request;
+}
 
 export function validateCreativeImage(file: File) {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return "Use uma imagem PNG, JPG, WEBP ou GIF. Arquivos SVG não são permitidos.";
@@ -15,44 +61,50 @@ export function validateCreativeImage(file: File) {
 }
 
 export function ProtectedCreativeImage({ creative, className }: { creative: Creative; className?: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(creative.hasImage);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const cached = imageUrls.get(imageKey(creative)) ?? null;
+  const [visible, setVisible] = useState(Boolean(cached));
+  const [url, setUrl] = useState<string | null>(cached);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    let objectUrl: string | null = null;
-    setUrl(null);
-    setFailed(false);
+    const node = hostRef.current;
+    if (!node || visible) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) setVisible(true);
+    }, { rootMargin: "240px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visible]);
 
+  useEffect(() => {
     if (!creative.hasImage) {
-      setIsLoading(false);
+      setUrl(null);
+      setFailed(false);
       return;
     }
+    if (!visible) return;
+    const hit = imageUrls.get(imageKey(creative));
+    if (hit) {
+      setUrl(hit);
+      setFailed(false);
+      return;
+    }
+    let active = true;
+    setFailed(false);
+    loadCreativeImage(creative)
+      .then((next) => { if (active) setUrl(next); })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [creative, visible]);
 
-    setIsLoading(true);
-    getCreativeImage(creative.id)
-      .then((blob) => {
-        objectUrl = URL.createObjectURL(blob);
-        if (active) setUrl(objectUrl);
-        else URL.revokeObjectURL(objectUrl);
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [creative.hasImage, creative.id, creative.updatedAt]);
-
-  if (isLoading) return <div className={cn("animate-pulse bg-muted", className)} aria-label="Carregando imagem" />;
-  if (!url || failed) return <div className={cn("grid place-items-center bg-muted text-muted-foreground", className)}><ImageOff className="h-5 w-5" /><span className="sr-only">Imagem indisponível</span></div>;
-  return <img src={url} alt={`Criativo ${creative.title}`} className={cn("object-cover", className)} draggable={false} />;
+  return (
+    <div ref={hostRef} className={cn("overflow-hidden bg-muted", className)}>
+      {url && !failed ? <img src={url} alt={`Criativo ${creative.title}`} className="h-full w-full object-cover" draggable={false} decoding="async" /> : failed ? (
+        <div className="grid h-full place-items-center text-muted-foreground"><ImageOff className="h-5 w-5" /><span className="sr-only">Imagem indisponível</span></div>
+      ) : <div className="h-full w-full animate-pulse" aria-label="Carregando imagem" />}
+    </div>
+  );
 }
 
 export function CreativeImagePicker({ file, onChange, label = "Adicionar imagem" }: { file: File | null; onChange: (file: File | null) => void; label?: string }) {

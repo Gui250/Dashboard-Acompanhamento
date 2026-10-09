@@ -6,25 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { formatMetricValue } from "@/lib/utils";
 import type { Metric } from "@/lib/api";
 
-export function LoadingDashboard() {
-  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse rounded-lg border bg-white/70" />)}</div>;
-}
-
-export function ChartSkeleton() {
-  return <div className="h-[380px] animate-pulse rounded-lg border bg-white/70" />;
-}
-
-export function EmptyChart({ text }: { text: string }) {
-  return (
-    <div className="flex h-[280px] flex-col items-center justify-center text-center">
-      <div className="grid h-11 w-11 place-items-center rounded-full bg-muted text-muted-foreground"><Database className="h-5 w-5" /></div>
-      <p className="mt-3 text-sm font-semibold">Ainda não há dados para exibir</p>
-      <p className="mt-1 max-w-56 text-xs leading-5 text-muted-foreground">{text}</p>
-    </div>
-  );
-}
-
-export function RecentMetrics({ metrics }: { metrics: Metric[] }) {
+export function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-2xl">
@@ -77,66 +59,17 @@ export function LoadingDashboard() {
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse rounded-lg border bg-white/70" />)}</div>;
 }
 
-function EmptyChart({ text }: { text: string }) {
+export function ChartSkeleton() {
+  return <div className="h-[380px] animate-pulse rounded-lg border bg-white/70" />;
+}
+
+export function EmptyChart({ text }: { text: string }) {
   return (
     <div className="flex h-[280px] flex-col items-center justify-center text-center">
       <div className="grid h-11 w-11 place-items-center rounded-full bg-muted text-muted-foreground"><Database className="h-5 w-5" /></div>
       <p className="mt-3 text-sm font-semibold">Ainda não há dados para exibir</p>
       <p className="mt-1 max-w-56 text-xs leading-5 text-muted-foreground">{text}</p>
     </div>
-  );
-}
-
-export function TimelineCard({ title, description, data, dataKey }: { title: string; description: string; data: MetricSeriesPoint[]; dataKey: string }) {
-  const chartData = data.map((point) => ({ ...point, shortLabel: /^\d{4}-\d{2}-\d{2}$/.test(point.label) ? formatShortDate(point.label) : point.label }));
-  return (
-    <Card className="xl:col-span-2">
-      <CardHeader className="flex-row items-start justify-between space-y-0">
-        <div><CardTitle>{title}</CardTitle><CardDescription className="mt-1">{description}</CardDescription></div>
-        <span className="rounded-md bg-primary/10 p-2 text-primary"><BarChart3 className="h-4 w-4" /></span>
-      </CardHeader>
-      <CardContent>
-        {data.length === 0 ? <EmptyChart text="Faça o primeiro lançamento para iniciar a série histórica." /> : (
-          <ChartContainer config={{ value: { label: dataKey, color: "#e50915" } }} className="h-[280px] w-full">
-            <LineChart data={chartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 4" />
-              <XAxis dataKey="shortLabel" tickLine={false} axisLine={false} tickMargin={10} />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                tickFormatter={(value: number) => axisNumberFormatter.format(value)}
-                width={66}
-              />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={3} dot={{ r: 3, fill: "#fff", strokeWidth: 2 }} activeDot={{ r: 5 }} />
-            </LineChart>
-          </ChartContainer>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-export function RankingCard({ title, description, data }: { title: string; description: string; data: MetricSeriesPoint[] }) {
-  const visible = data.filter((item) => item.label).slice(0, 6);
-  return (
-    <Card>
-      <CardHeader><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader>
-      <CardContent>
-        {visible.length === 0 ? <EmptyChart text="Inclua o nome do vendedor no campo dimensão." /> : (
-          <ChartContainer config={{ value: { label: "Vendas", color: "#171717" } }} className="h-[280px] w-full">
-            <BarChart data={visible} layout="vertical" margin={{ top: 2, right: 18, left: 12, bottom: 2 }}>
-              <CartesianGrid horizontal={false} strokeDasharray="3 4" />
-              <XAxis type="number" hide />
-              <YAxis dataKey="label" type="category" tickLine={false} axisLine={false} width={82} tick={{ fontSize: 11 }} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="value" fill="var(--color-value)" radius={[0, 5, 5, 0]} barSize={18} />
-            </BarChart>
-          </ChartContainer>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

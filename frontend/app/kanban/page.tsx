@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { AlertTriangle, GripVertical, Layers3, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageIntro } from "@/components/dashboard/dashboard-parts";
@@ -9,6 +9,7 @@ import { CreativeDetailDialog } from "@/components/kanban/creative-detail-dialog
 import { ProtectedCreativeImage } from "@/components/kanban/creative-image";
 import { Button } from "@/components/ui/button";
 import { ApiError, getCreatives, updateCreative, type Creative, type CreativeStage } from "@/lib/api";
+import { peekQuery, prefetchQuery, refreshQuery, setQueryData } from "@/lib/query-cache";
 import { cn } from "@/lib/utils";
 
 const stages: { id: CreativeStage; label: string; color: string }[] = [
@@ -30,23 +31,47 @@ export default function KanbanPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
   const suppressClick = useRef(false);
+  const epoch = useRef(0);
 
-  const loadCards = useCallback(async () => {
-    setIsLoading(true);
+  const loadCards = useCallback(async (force = false) => {
+    const ticket = ++epoch.current;
+    const cached = peekQuery<Creative[]>("creatives");
+    if (cached) {
+      setCards(cached);
+      setIsLoading(false);
+    } else setIsLoading(true);
     setLoadError(null);
     try {
-      setCards(await getCreatives());
+      const next = force
+        ? await refreshQuery("creatives", getCreatives)
+        : await prefetchQuery("creatives", getCreatives, 20_000);
+      if (ticket !== epoch.current) return;
+      setCards(next);
     } catch (reason) {
+      if (ticket !== epoch.current) return;
       setLoadError({
         message: reason instanceof Error ? reason.message : "Não foi possível carregar a esteira.",
         unavailable: reason instanceof ApiError && reason.status === 404,
       });
     } finally {
-      setIsLoading(false);
+      if (ticket === epoch.current) setIsLoading(false);
     }
   }, []);
 
+  useLayoutEffect(() => {
+    const cached = peekQuery<Creative[]>("creatives");
+    if (!cached) return;
+    setCards(cached);
+    setIsLoading(false);
+  }, []);
+
   useEffect(() => { void loadCards(); }, [loadCards]);
+
+  function commit(next: Creative[]) {
+    epoch.current += 1;
+    setCards(next);
+    setQueryData("creatives", next);
+  }
 
   async function dropCard(event: DragEvent<HTMLDivElement>, stage: CreativeStage) {
     event.preventDefault();
@@ -57,14 +82,15 @@ export default function KanbanPage() {
     const previous = cards.find((card) => card.id === id);
     if (!previous || previous.stage === stage) return;
 
-    setCards((current) => current.map((card) => card.id === id ? { ...card, stage } : card));
+    const next = cards.map((card) => card.id === id ? { ...card, stage } : card);
+    commit(next);
     setSavingIds((current) => new Set(current).add(id));
     try {
       const updated = await updateCreative(id, { stage });
-      setCards((current) => current.map((card) => card.id === id ? updated : card));
+      commit(next.map((card) => card.id === id ? updated : card));
       setSelected((current) => current?.id === id ? updated : current);
     } catch (reason) {
-      setCards((current) => current.map((card) => card.id === id ? previous : card));
+      commit(next.map((card) => card.id === id ? previous : card));
       toast.error("Movimento desfeito", { description: reason instanceof Error ? reason.message : "Não foi possível atualizar a etapa." });
     } finally {
       setSavingIds((current) => {
@@ -83,16 +109,16 @@ export default function KanbanPage() {
   }
 
   function addCreative(creative: Creative) {
-    setCards((current) => [...current, creative]);
+    commit([...cards, creative]);
   }
 
   function updateCard(creative: Creative) {
-    setCards((current) => current.map((card) => card.id === creative.id ? creative : card));
+    commit(cards.map((card) => card.id === creative.id ? creative : card));
     setSelected(creative);
   }
 
   function deleteCard(id: number) {
-    setCards((current) => current.filter((card) => card.id !== id));
+    commit(cards.filter((card) => card.id !== id));
     setSelected(null);
   }
 
@@ -113,7 +139,7 @@ export default function KanbanPage() {
               <h3 className="font-semibold">{loadError.unavailable ? "Kanban aguardando conexão" : "Não foi possível carregar o Kanban"}</h3>
               <p className="mt-1 text-sm text-muted-foreground">{loadError.unavailable ? "A API de criativos ainda não está disponível. Tente novamente quando o serviço estiver pronto." : loadError.message}</p>
             </div>
-            <Button variant="outline" onClick={() => void loadCards()}><RefreshCw className="h-4 w-4" />Tentar novamente</Button>
+            <Button variant="outline" onClick={() => void loadCards(true)}><RefreshCw className="h-4 w-4" />Tentar novamente</Button>
           </div>
         </div>
       ) : cards.length === 0 ? (
