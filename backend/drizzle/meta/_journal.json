@@ -71,6 +71,13 @@
       "when": 1791565773378,
       "tag": "0009_violet_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791572968010,
+      "tag": "0010_guilherme_admin",
+      "breakpoints": true
     }
   ]
 }

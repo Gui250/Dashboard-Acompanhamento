@@ -139,17 +139,18 @@ export async function adInsights(token: string, accountId: string, since: string
 
 type CreativeFields = { id?: string; title?: string; body?: string; image_url?: string; thumbnail_url?: string; object_type?: string }
 
-// Criativo (título, texto, imagem) dos anúncios já ranqueados. Falha de um id não derruba os outros.
+// Criativo (título, texto, imagem) dos anúncios já ranqueados, um pedido por anúncio em lotes de 10.
+// Não usar /?ids=a,b,c: a Graph derruba o lote inteiro se um único id falhar, e aí nenhum card tinha imagem.
 export async function adCreatives(token: string, ids: string[]) {
   const out = new Map<string, { creativeId: string | null; title: string | null; body: string | null; imageUrl: string | null; type: string | null }>()
   const fields = 'creative{id,title,body,image_url,thumbnail_url,object_type}'
-  for (let i = 0; i < ids.length; i += 50) {
-    const batch = ids.slice(i, i + 50)
-    const body = await graph<Record<string, { creative?: CreativeFields }>>(token, `/?ids=${batch.join(',')}&fields=${fields}`).catch(
-      (): Record<string, { creative?: CreativeFields }> => ({}),
+  for (let i = 0; i < ids.length; i += 10) {
+    const batch = ids.slice(i, i + 10)
+    const rows = await Promise.all(
+      batch.map((id) => graph<{ creative?: CreativeFields }>(token, `/${id}?fields=${fields}`).catch((): { creative?: CreativeFields } => ({}))),
     )
-    for (const id of batch) {
-      const c = body[id]?.creative
+    for (const [j, id] of batch.entries()) {
+      const c = rows[j].creative
       out.set(id, {
         creativeId: c?.id ?? null,
         title: c?.title ?? null,
