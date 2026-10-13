@@ -7,7 +7,7 @@ import { authenticate, requirePermission } from './auth.js'
 import { apiUrl } from '../lib/urls.js'
 import { createMetricBody, importContentBody, metricFilters, seriesQuery, templateTool } from '../views/metric.js'
 import { createCreativeBody, creativesQuery, funnelBody, funnelChanges, updateCreativeBody } from '../views/creative.js'
-import { dateRangeQuery, googleCampaignsQuery, metaAdHiddenBody, metaAdParams, metaAdsQuery, metaCampaignsQuery } from '../views/integration.js'
+import { dateRangeQuery, googleCampaignsQuery, metaAdHiddenBody, metaAdParams, metaAdsQuery, metaCampaignsQuery, metaTopAdsQuery } from '../views/integration.js'
 
 // Servidor MCP (Streamable HTTP) em /mcp. Cada tool repassa para uma rota REST via inject:
 // validação, regras e erros continuam num lugar só. Para expor algo novo, acrescente uma linha em TOOLS.
@@ -153,11 +153,11 @@ const TOOLS: Tool[] = [
   {
     name: 'meta_top_ads',
     description:
-      'Criativos da Meta que mais performam no período (padrão: últimos 30 dias), em todas as contas: gasto, impressões, cliques, alcance, leads, compras, CTR, CPC, CPM, imagem, título e conta. ' +
+      'Criativos da Meta que mais performam no período (padrão: últimos 30 dias), em todas as contas ou só em uma (accountId = id de meta_ads_accounts): gasto, impressões, cliques, alcance, leads, compras, CTR, CPC, CPM, imagem, título e conta. ' +
       'A lista vem ordenada por gasto e omite anúncios ocultos no dashboard. Reordene por leads, compras ou CTR se o critério for outro.',
     method: 'GET',
     url: '/meta/top-ads',
-    input: dateRangeQuery,
+    input: metaTopAdsQuery,
   },
   {
     name: 'meta_ads_creatives',

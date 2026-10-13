@@ -22,8 +22,8 @@ const SHEETS: Record<Section, { title: string; dimension: string; metrics: Recor
     metrics: {
       faturamento: { fmt: '"R$" #,##0.00', hint: 'Valor em reais. Card Faturamento e gráfico de evolução.' },
       vendas: { fmt: INT, hint: 'Quantidade de negócios. Informe o vendedor para o ranking Top vendedores.' },
-      leads: { fmt: INT, hint: 'Oportunidades recebidas. Card Leads.' },
-      taxa_conversao: { fmt: '0.0"%"', hint: 'Percentual: 18,5 = 18,5%. O card mostra a mais recente.' },
+      leads: { fmt: INT, hint: 'Oportunidades recebidas. Card Leads. Informe o vendedor para a conversão por vendedor.' },
+      taxa_conversao: { fmt: '0.0"%"', hint: 'Já vem por fórmula: vendas ÷ leads (do vendedor da linha ou, sem vendedor, do time). O card mostra a mais recente.' },
     },
   },
   operacional: {
@@ -40,8 +40,8 @@ const SECTIONS = Object.keys(SHEETS) as Section[]
 const EXAMPLES: Row[] = [
   { section: 'comercial', key: 'faturamento', dimension: 'Ana', value: 15400, date: '2026-10-01' },
   { section: 'comercial', key: 'vendas', dimension: 'Ana', value: 12, date: '2026-10-01' },
-  { section: 'comercial', key: 'leads', dimension: '', value: 85, date: '2026-10-01' },
-  { section: 'comercial', key: 'taxa_conversao', dimension: '', value: 18.5, date: '2026-10-01' },
+  { section: 'comercial', key: 'leads', dimension: 'Ana', value: 85, date: '2026-10-01' },
+  { section: 'comercial', key: 'taxa_conversao', dimension: '', value: '', date: '2026-10-01' },
   { section: 'operacional', key: 'criativos_em_esteira', dimension: 'Cliente X', value: 7, date: '2026-10-01' },
   { section: 'operacional', key: 'contas_ativas', dimension: 'Cliente X', value: 1, date: '2026-10-01' },
 ]
@@ -109,6 +109,17 @@ const EXAMPLE_FONT = { ...FONT, italic: true, color: { argb: MUTED } } // linhas
 const LAST_ROW = 1000 // alcance da lista suspensa e das validações
 const GRID_ROWS = 200 // linhas já desenhadas (bordas e amarelo) para preencher
 const PAGE = { orientation: 'landscape' as const, fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+const CALC = fill('FFF4F4F5') // cinza: célula calculada por fórmula, não digitar
+const BRL = '"R$" #,##0.00'
+
+// Intervalo absoluto de uma coluna da aba Comercial, para as fórmulas.
+const com = (col: string, sheet = 'Comercial!') => `${sheet}$${col}$2:$${col}$${LAST_ROW}`
+// Soma de uma métrica da aba Comercial; com `who`, só do vendedor daquela célula.
+const sumOf = (metric: string, who?: string, sheet?: string) =>
+  `SUMIFS(${com('C', sheet)},${com('A', sheet)},"${metric}"${who ? `,${com('B', sheet)},${who}` : ''})`
+// taxa_conversao em % (18,5 = 18,5%), como o dashboard lê. Vazio sem leads.
+const conversionFormula = (row: number, seller: string) =>
+  `IFERROR(100*${sumOf('vendas', seller && `B${row}`, '')}/${sumOf('leads', seller && `B${row}`, '')},"")`
 
 function addSectionSheet(wb: ExcelJS.Workbook, section: Section, rows: Row[], example: boolean) {
   const { title, dimension, metrics } = SHEETS[section]
@@ -135,20 +146,26 @@ function addSectionSheet(wb: ExcelJS.Workbook, section: Section, rows: Row[], ex
   }
   for (const [ref, note] of Object.entries(notes)) ws.getCell(ref).note = note
 
-  for (const r of rows) ws.addRow({ key: r.key, dimension: r.dimension, value: r.value, date: r.date ? new Date(r.date) : '' })
+  const calculated = (r?: Row) => r?.key === 'taxa_conversao'
+  rows.forEach((r, i) => ws.addRow({
+    key: r.key,
+    dimension: r.dimension,
+    value: calculated(r) ? { formula: conversionFormula(i + 2, r.dimension) } : r.value,
+    date: r.date ? new Date(r.date) : '',
+  }))
   for (let i = 2; i <= Math.max(GRID_ROWS, rows.length + 1); i++) {
     const row = ws.getRow(i)
     row.height = 18
     const r = rows[i - 2]
     for (const col of [1, 2, 3, 4]) {
       const c = row.getCell(col)
-      c.font = r && example ? EXAMPLE_FONT : FONT
+      c.font = r && example && !calculated(r) ? EXAMPLE_FONT : FONT // a linha da taxa fica: é fórmula, não exemplo
       c.border = GRID
       c.alignment = { vertical: 'middle', indent: 1, horizontal: col >= 3 ? 'right' : 'left' }
     }
     const value = row.getCell(3)
     value.numFmt = (r && metrics[r.key]?.fmt) || 'General'
-    value.fill = INPUT
+    value.fill = calculated(r) ? CALC : INPUT
     row.getCell(4).numFmt = 'dd/mm/yyyy'
   }
 
@@ -164,6 +181,93 @@ function addSectionSheet(wb: ExcelJS.Workbook, section: Section, rows: Row[], ex
       type: 'date', operator: 'greaterThan', allowBlank: true, formulae: [new Date('2000-01-01')], showErrorMessage: true, errorStyle: 'warning',
       errorTitle: 'Data inválida', error: 'Use DD/MM/AAAA.',
     }
+  }
+}
+
+const SELLER_ROWS = 30 // linhas de vendedor já com fórmula
+const TEAM = 6 // linha do total do time; vendedores logo abaixo
+const STATUS = [ // texto + ícone, a cor só reforça
+  { icon: '▲', bg: 'FFDCF5DC' },
+  { icon: '●', bg: 'FFFDEFC8' },
+  { icon: '▼', bg: 'FFF9DADA' },
+]
+
+// Visão por vendedor, só leitura: fórmulas sobre a aba Comercial. A importação ignora esta aba.
+function addSellersSheet(wb: ExcelJS.Workbook, sellers: string[]) {
+  const ws = wb.addWorksheet('Vendedores', {
+    views: [{ state: 'frozen', ySplit: TEAM, showGridLines: false }],
+    properties: { tabColor: { argb: RED } },
+    pageSetup: PAGE,
+  })
+  ws.columns = [24, 11, 11, 18, 13, 16, 18, 12, 22].map((width) => ({ width }))
+  const last = TEAM + SELLER_ROWS
+  const banner = (r: number, text: string, font: Partial<ExcelJS.Font>, height: number, bg?: string) => {
+    ws.mergeCells(r, 1, r, 9)
+    const c = ws.getCell(r, 1)
+    c.value = text
+    c.font = { ...FONT, ...font }
+    c.alignment = { vertical: 'middle', wrapText: true, indent: 1 }
+    if (bg) c.fill = fill(bg)
+    ws.getRow(r).height = height
+  }
+  banner(1, 'Desempenho por vendedor', { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }, 34, DARK)
+  banner(2, 'Calculado a partir da aba Comercial. Preencha só as células amarelas (vendedor e meta); o resto é fórmula.', { color: { argb: MUTED } }, 20)
+
+  ws.getCell('A3').value = 'Atenção a partir de'
+  ws.getCell('A3').font = { ...FONT, bold: true }
+  Object.assign(ws.getCell('B3'), { value: 0.8, numFmt: '0%', fill: INPUT, border: GRID, font: FONT })
+  ws.mergeCells('C3:I3')
+  Object.assign(ws.getCell('C3'), {
+    value: 'da meta → ● Atenção. Sem meta, o status compara a conversão com a do time.',
+    font: { ...FONT, color: { argb: MUTED } },
+    alignment: { vertical: 'middle', indent: 1 },
+  })
+
+  const head = ws.getRow(5)
+  head.values = ['vendedor', 'leads', 'vendas', 'faturamento', 'conversão', 'ticket médio', 'meta (R$)', '% da meta', 'status']
+  head.height = 26
+  head.eachCell((c) => Object.assign(c, HEADER))
+
+  const status = (r: number, noGoal: string) =>
+    `IF(N(G${r})>0,IF(H${r}>=1,"▲ Bateu a meta",IF(H${r}>=$B$3,"● Atenção","▼ Abaixo da meta")),${noGoal})`
+  for (let r = TEAM; r <= last; r++) {
+    const team = r === TEAM
+    const name = team ? '' : `$A${r}`
+    const sum = (metric: string) => ({ formula: team ? sumOf(metric) : `IF(${name}="","",${sumOf(metric, name)})` })
+    const row = ws.getRow(r)
+    row.values = [
+      team ? 'Total do time' : sellers[r - TEAM - 1] ?? '',
+      sum('leads'),
+      sum('vendas'),
+      sum('faturamento'),
+      { formula: `IF(N(B${r})>0,C${r}/B${r},"")` },
+      { formula: `IF(N(C${r})>0,D${r}/C${r},"")` },
+      team ? { formula: `IF(SUM(G${TEAM + 1}:G${last})>0,SUM(G${TEAM + 1}:G${last}),"")` } : null,
+      { formula: `IF(N(G${r})>0,D${r}/G${r},"")` },
+      { formula: team ? status(r, '""') : `IF($A${r}="","",${status(r, `IF(E${r}="","— Sem leads",IF(E${r}>=$E$${TEAM},"▲ Acima da média","▼ Abaixo da média"))`)})` },
+    ]
+    row.height = team ? 22 : 18
+    row.eachCell({ includeEmpty: true }, (c, col) => {
+      c.font = { ...FONT, bold: team }
+      c.border = team ? { ...GRID, bottom: { style: 'medium', color: { argb: DARK } } } : GRID
+      c.alignment = { vertical: 'middle', indent: 1, horizontal: col === 1 || col === 9 ? 'left' : 'right' }
+      c.numFmt = [, , INT, INT, BRL, '0.0%', BRL, BRL, '0%'][col] ?? 'General'
+      c.fill = !team && (col === 1 || col === 7) ? INPUT : CALC
+    })
+  }
+
+  const body = (col: string) => `${col}${TEAM + 1}:${col}${last}`
+  ws.addConditionalFormatting({ ref: `I${TEAM}:I${last}`, rules: STATUS.map(({ icon, bg }, i) => ({
+    type: 'expression', formulae: [`LEFT($I${TEAM},1)="${icon}"`], priority: i + 1,
+    style: { fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: bg }, bgColor: { argb: bg } } }, // Excel lê bg, LibreOffice lê fg
+  })) })
+  // Barras na célula: comparação visual entre vendedores, um tom só (magnitude, não status).
+  for (const col of ['D', 'E']) {
+    ws.addConditionalFormatting({ ref: body(col), rules: [{
+      type: 'dataBar', priority: 10, gradient: false, minLength: 0, maxLength: 100,
+      cfvo: [{ type: 'num', value: 0 }, { type: 'max' }],
+      color: { argb: 'FFD4D4D8' },
+    } as ExcelJS.DataBarRuleType] })
   }
 }
 
@@ -198,10 +302,11 @@ function addInstructions(wb: ExcelJS.Workbook) {
 
   merged('Modelo de importação de métricas', { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }, 34, DARK)
   merged('V4 Dashboard · preencha as abas Comercial e Operacional e importe o arquivo em Importar planilha.', { color: { argb: MUTED } }, 20)
+  merged('A aba Vendedores mostra leads, vendas, conversão e status de cada vendedor, calculados por fórmula. Ela não é importada.', { color: { argb: MUTED } }, 20)
 
   heading('Passo a passo')
   ;[
-    'Apague as linhas de exemplo (texto cinza em itálico), se houver.',
+    'Apague as linhas de exemplo (texto cinza em itálico), se houver. Células cinza são fórmulas: não digite nelas.',
     'Preencha uma linha por lançamento. As células amarelas são o valor a preencher.',
     'Escolha a métrica na lista suspensa e digite a data como DD/MM/AAAA.',
     'Não renomeie as abas nem os cabeçalhos da linha 1: é por eles que a importação lê o arquivo.',
@@ -218,7 +323,7 @@ function addInstructions(wb: ExcelJS.Workbook) {
 
   heading('Colunas')
   table(['aba', 'coluna', 'obrigatória', 'como preencher'], [
-    ['Comercial', 'vendedor', 'não', 'nome do vendedor (usado no ranking Top vendedores)'],
+    ['Comercial', 'vendedor', 'não', 'nome do vendedor (ranking Top vendedores e aba Vendedores)'],
     ['Operacional', 'dimensao', 'não', 'conta, lead ou responsável (usado na lista Contas por lead)'],
     ['as duas', 'metrica', 'sim', 'escolha na lista suspensa'],
     ['as duas', 'valor', 'sim', 'só o número: sem R$ ou %; vírgula ou ponto para decimais'],
@@ -237,7 +342,10 @@ export async function metricsTemplate(format: 'xlsx' | 'csv', rows = EXAMPLES): 
     return Buffer.from('﻿' + XLSX.utils.sheet_to_csv(sheet, { FS: ';' }), 'utf8')
   }
   const wb = new ExcelJS.Workbook()
-  for (const section of SECTIONS) addSectionSheet(wb, section, rows.filter((r) => r.section === section), rows === EXAMPLES)
+  for (const section of SECTIONS) {
+    addSectionSheet(wb, section, rows.filter((r) => r.section === section), rows === EXAMPLES)
+    if (section === 'comercial') addSellersSheet(wb, [...new Set(rows.filter((r) => r.section === section && r.dimension).map((r) => r.dimension))])
+  }
   addInstructions(wb)
   return Buffer.from(await wb.xlsx.writeBuffer())
 }

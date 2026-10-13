@@ -39,6 +39,8 @@ export const dashboardQuery = z.object({
   section,
   timelineKey: z.string().min(1),
   rankingKey: z.string().min(1).optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
 })
 
 export const dashboardView = z.object({

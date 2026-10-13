@@ -189,8 +189,10 @@ export function getSeries(section: MetricSection, key: string, groupBy: "date" |
   return apiRequest<MetricSeriesPoint[]>(`/metrics/series?${params.toString()}`, undefined, true);
 }
 
-export function getDashboard(section: MetricSection, timelineKey: string, rankingKey?: string) {
-  const params = new URLSearchParams({ section, timelineKey });
+export type DateRange = { from: string; to: string };
+
+export function getDashboard(section: MetricSection, timelineKey: string, rankingKey?: string, range?: DateRange) {
+  const params = new URLSearchParams({ section, timelineKey, ...range });
   if (rankingKey) params.set("rankingKey", rankingKey);
   return apiRequest<DashboardSnapshot>(`/metrics/dashboard?${params.toString()}`, undefined, true);
 }
@@ -391,8 +393,22 @@ export type MetaTopAd = {
   cpm: number;
 };
 
-export function getMetaTopAds(from?: string, to?: string) {
-  return apiRequest<{ from: string; to: string; ads: MetaTopAd[] }>(`/meta/top-ads?${rangeParams(from, to)}`, undefined, true);
+export function getMetaTopAds(from?: string, to?: string, accountId?: string) {
+  const account = accountId ? `&accountId=${encodeURIComponent(accountId)}` : "";
+  return apiRequest<{ from: string; to: string; ads: MetaTopAd[] }>(`/meta/top-ads?${rangeParams(from, to)}${account}`, undefined, true);
+}
+
+// Desempenho por campanha de uma conta: mesmas métricas da conta, sem moeda (vale a da conta).
+export type MetaCampaign = Omit<MetaAccount, "accountId" | "status" | "currency">;
+export type GoogleCampaign = Omit<GoogleAccount, "currency" | "status"> & { status: "ativa" | "pausada" | "removida" | "outro" };
+type CampaignsReport<C> = { accountId: string; from: string; to: string; campaigns: C[] };
+
+export function getMetaCampaigns(accountId: string, from: string, to: string) {
+  return apiRequest<CampaignsReport<MetaCampaign>>(`/meta/campaigns?${rangeParams(from, to)}&accountId=${encodeURIComponent(accountId)}`, undefined, true);
+}
+
+export function getGoogleCampaigns(accountId: string, from: string, to: string) {
+  return apiRequest<CampaignsReport<GoogleCampaign>>(`/google/campaigns?${rangeParams(from, to)}&accountId=${encodeURIComponent(accountId)}`, undefined, true);
 }
 
 export function getMetaAds(accountId: string) {

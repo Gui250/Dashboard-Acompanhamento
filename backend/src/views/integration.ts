@@ -45,6 +45,8 @@ const metrics = {
 
 // Meta aceita act_123 ou 123; Google, o ID da conta só com dígitos (sem traços).
 export const metaCampaignsQuery = dateRangeQuery.extend({ accountId: z.string().regex(/^(act_)?\d+$/) })
+// accountId opcional: só os anúncios dessa conta (visão de uma conta no dashboard).
+export const metaTopAdsQuery = dateRangeQuery.extend({ accountId: metaCampaignsQuery.shape.accountId.optional() })
 export const googleCampaignsQuery = dateRangeQuery.extend({ accountId: z.string().regex(/^\d+$/) })
 
 export const metaAccountsView = z.object({

@@ -17,11 +17,11 @@ export function series(req: FastifyRequest<{ Querystring: z.infer<typeof seriesQ
 }
 
 export async function dashboard(req: FastifyRequest<{ Querystring: z.infer<typeof dashboardQuery> }>) {
-  const { section, timelineKey, rankingKey } = req.query
+  const { section, timelineKey, rankingKey, from, to } = req.query
   const [metrics, timeline, ranking] = await Promise.all([
-    listMetrics({ section }),
-    metricSeries({ section, key: timelineKey, groupBy: 'date' }),
-    rankingKey ? metricSeries({ section, key: rankingKey, groupBy: 'dimension' }) : Promise.resolve([]),
+    listMetrics({ section, from, to }),
+    metricSeries({ section, from, to, key: timelineKey, groupBy: 'date' }),
+    rankingKey ? metricSeries({ section, from, to, key: rankingKey, groupBy: 'dimension' }) : Promise.resolve([]),
   ])
   return { metrics, timeline, ranking }
 }

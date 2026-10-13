@@ -11,7 +11,6 @@ import { ADS_STALE_MS, topAdsQuery } from "@/lib/prefetch";
 import { useQuery } from "@/hooks/use-query";
 import { cn } from "@/lib/utils";
 
-const PERIODS = [7, 30, 90] as const;
 const SHOWN = 12;
 const int = new Intl.NumberFormat("pt-BR");
 const pct = (value: number) => `${value.toFixed(2).replace(".", ",")}%`;
@@ -39,10 +38,10 @@ function metricValue(ad: MetaTopAd, rank: Rank) {
   return int.format(ad[rank]);
 }
 
-export function TopCreativesSection() {
-  const [days, setDays] = useState<(typeof PERIODS)[number]>(30);
+// accountId = id da conta da Meta (act_…): só os criativos dela.
+export function TopCreativesSection({ days, accountId }: { days: number; accountId?: string }) {
   const [rank, setRank] = useState<Rank>("leads");
-  const { key, fetcher } = useMemo(() => topAdsQuery(days), [days]);
+  const { key, fetcher } = useMemo(() => topAdsQuery(days, accountId), [days, accountId]);
   const { data, error, isLoading, refresh } = useQuery(key, fetcher, ADS_STALE_MS);
 
   const last = useRef<NonNullable<typeof data> | undefined>(undefined);
@@ -73,10 +72,6 @@ export function TopCreativesSection() {
           {RANKS.map((item) => (
             <Button key={item.key} size="sm" variant={item.key === rank ? "default" : "outline"} aria-pressed={item.key === rank} onClick={() => setRank(item.key)}>{item.label}</Button>
           ))}
-          <span className="mx-1 hidden h-9 w-px bg-border sm:block" />
-          {PERIODS.map((p) => (
-            <Button key={p} size="sm" variant={p === days ? "default" : "outline"} aria-pressed={p === days} onClick={() => setDays(p)}>{p} dias</Button>
-          ))}
         </div>
       </div>
 
@@ -85,7 +80,7 @@ export function TopCreativesSection() {
           {Array.from({ length: 4 }, (_, i) => <div key={i} className="h-72 animate-pulse rounded-lg border bg-white/70" />)}
         </div>
       ) : ads.length === 0 ? (
-        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">Nenhum criativo com veiculação neste período.</CardContent></Card>
+        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">Nenhum criativo com veiculação {accountId ? "nesta conta " : ""}neste período.</CardContent></Card>
       ) : (
         <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-4", refreshing && "pointer-events-none opacity-60")}>
           {ads.map((ad, index) => (
@@ -98,7 +93,7 @@ export function TopCreativesSection() {
               </div>
               <div className="flex flex-1 flex-col gap-1 p-3">
                 <p className="line-clamp-2 text-sm font-semibold">{ad.name}</p>
-                <p className="truncate text-[11px] text-muted-foreground">{ad.accountName}{ad.campaign ? ` · ${ad.campaign}` : ""}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{accountId ? ad.campaign : <>{ad.accountName}{ad.campaign ? ` · ${ad.campaign}` : ""}</>}</p>
                 <p className="mt-auto pt-3 font-display text-2xl font-extrabold leading-none tracking-[-0.03em] tabular-nums">{metricValue(ad, rank)}</p>
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{RANKS.find((item) => item.key === rank)?.label}</p>
                 <div className="mt-2 grid grid-cols-3 gap-2 border-t pt-2 text-[11px] tabular-nums">

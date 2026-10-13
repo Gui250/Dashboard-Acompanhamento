@@ -17,6 +17,7 @@ import { webUrl } from '../lib/urls.js'
 import { hiddenAdIds, setAdHidden } from '../models/hidden-ad.js'
 import type {
   dateRangeQuery,
+  metaTopAdsQuery,
   googleCallbackQuery,
   googleCampaignsQuery,
   googleCredentialsBody,
@@ -129,13 +130,14 @@ export async function metaCampaigns(req: FastifyRequest<{ Querystring: z.infer<t
 const EMPTY_CREATIVE = { creativeId: null, title: null, body: null, imageUrl: null, type: null }
 
 // Anúncios com resultado em todas as contas, sem os ocultos no dashboard. O recorte é por gasto; a tela reordena.
-export async function metaTopAds(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
+export async function metaTopAds(req: FastifyRequest<{ Querystring: z.infer<typeof metaTopAdsQuery> }>, reply: FastifyReply) {
   const config = await getMetaConfig()
   if (!config) return reply.status(409).send({ message: 'Configure a Meta em Integrações.' })
   const { from, to } = range(req.query)
   try {
     const { accessToken: token, businessId } = config
-    const accounts = await listBusinessAdAccounts(token, businessId)
+    const only = req.query.accountId && `act_${req.query.accountId.replace(/^act_/, '')}`
+    const accounts = (await listBusinessAdAccounts(token, businessId)).filter((a) => !only || a.id === only)
     const rows: (Awaited<ReturnType<typeof adInsights>>[number] & { accountId: string; accountName: string; currency: string })[] = []
     for (let i = 0; i < accounts.length; i += 10) {
       const batch = accounts.slice(i, i + 10)

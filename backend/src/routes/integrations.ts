@@ -4,6 +4,7 @@ import { authenticate, requirePermission } from './auth.js'
 import { errorView } from '../views/user.js'
 import {
   dateRangeQuery,
+  metaTopAdsQuery,
   googleAccountsView,
   googleAuthUrlView,
   googleCallbackQuery,
@@ -63,7 +64,7 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
   )
   app.get(
     '/meta/top-ads',
-    { preHandler: metrics, schema: { querystring: dateRangeQuery, response: { 200: metaTopAdsView, 409: errorView, 502: errorView } } },
+    { preHandler: metrics, schema: { querystring: metaTopAdsQuery, response: { 200: metaTopAdsView, 409: errorView, 502: errorView } } },
     controller.metaTopAds,
   )
   app.get(
