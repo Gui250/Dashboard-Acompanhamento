@@ -92,30 +92,64 @@ export function templateRows({ section, keys, dimensions, date }: TemplatePrefil
 }
 
 const FONT = { name: 'Arial', size: 10 }
+const DARK = 'FF171717'
+const RED = 'FFE50915' // vermelho V4, o mesmo dos e-mails
+const MUTED = 'FF71717A'
 const fill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } })
-const HEADER = { font: { ...FONT, bold: true, color: { argb: 'FFFFFFFF' } }, fill: fill('FF171717') }
+const line = (argb: string) => ({ style: 'thin' as const, color: { argb } })
+const GRID = { top: line('FFE4E4E7'), bottom: line('FFE4E4E7'), left: line('FFE4E4E7'), right: line('FFE4E4E7') }
+const HEADER = {
+  font: { ...FONT, bold: true, size: 11, color: { argb: 'FFFFFFFF' } },
+  fill: fill(DARK),
+  alignment: { vertical: 'middle' as const, horizontal: 'left' as const, indent: 1 },
+  border: { bottom: { style: 'medium' as const, color: { argb: RED } } },
+}
 const INPUT = fill('FFFFF8E1') // amarelo claro: célula para preencher
-const LAST_ROW = 1000 // alcance da lista suspensa e dos formatos
+const EXAMPLE_FONT = { ...FONT, italic: true, color: { argb: MUTED } } // linhas de exemplo: apagar antes de importar
+const LAST_ROW = 1000 // alcance da lista suspensa e das validações
+const GRID_ROWS = 200 // linhas já desenhadas (bordas e amarelo) para preencher
+const PAGE = { orientation: 'landscape' as const, fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
 
-function addSectionSheet(wb: ExcelJS.Workbook, section: Section, rows: Row[]) {
+function addSectionSheet(wb: ExcelJS.Workbook, section: Section, rows: Row[], example: boolean) {
   const { title, dimension, metrics } = SHEETS[section]
-  const ws = wb.addWorksheet(title, { views: [{ state: 'frozen', ySplit: 1 }] })
+  const ws = wb.addWorksheet(title, {
+    views: [{ state: 'frozen', ySplit: 1, showGridLines: false }],
+    properties: { tabColor: { argb: section === 'comercial' ? RED : DARK } },
+    pageSetup: PAGE,
+  })
+  // Cabeçalho na linha 1 e com estes nomes: é o que a importação lê.
   ws.columns = [
-    { header: 'metrica', key: 'key', width: 24 },
-    { header: dimension, key: 'dimension', width: 24 },
-    { header: 'valor', key: 'value', width: 16 },
-    { header: 'data', key: 'date', width: 14, style: { numFmt: 'dd/mm/yyyy', font: FONT } },
+    { header: 'metrica', key: 'key', width: 26 },
+    { header: dimension, key: 'dimension', width: 26 },
+    { header: 'valor', key: 'value', width: 18 },
+    { header: 'data', key: 'date', width: 14 },
   ]
+  ws.getRow(1).height = 26
   ws.getRow(1).eachCell((c) => Object.assign(c, HEADER))
-  ws.getRow(1).height = 20
   ws.autoFilter = 'A1:D1'
+  const notes: Record<string, string> = {
+    A1: `Escolha na lista: ${Object.keys(metrics).join(', ')}.`,
+    B1: section === 'comercial' ? 'Opcional. Nome do vendedor, para o ranking Top vendedores.' : 'Opcional. Conta, lead ou responsável, para a lista Contas por lead.',
+    C1: 'Só o número: sem R$ ou %. Vírgula ou ponto para decimais.',
+    D1: 'Data do lançamento, DD/MM/AAAA.',
+  }
+  for (const [ref, note] of Object.entries(notes)) ws.getCell(ref).note = note
 
-  for (const r of rows) {
-    const row = ws.addRow({ key: r.key, dimension: r.dimension, value: r.value, date: r.date ? new Date(r.date) : '' })
-    row.font = FONT
-    const value = row.getCell('value')
-    value.numFmt = metrics[r.key]?.fmt ?? '#,##0.##'
+  for (const r of rows) ws.addRow({ key: r.key, dimension: r.dimension, value: r.value, date: r.date ? new Date(r.date) : '' })
+  for (let i = 2; i <= Math.max(GRID_ROWS, rows.length + 1); i++) {
+    const row = ws.getRow(i)
+    row.height = 18
+    const r = rows[i - 2]
+    for (const col of [1, 2, 3, 4]) {
+      const c = row.getCell(col)
+      c.font = r && example ? EXAMPLE_FONT : FONT
+      c.border = GRID
+      c.alignment = { vertical: 'middle', indent: 1, horizontal: col >= 3 ? 'right' : 'left' }
+    }
+    const value = row.getCell(3)
+    value.numFmt = (r && metrics[r.key]?.fmt) || 'General'
     value.fill = INPUT
+    row.getCell(4).numFmt = 'dd/mm/yyyy'
   }
 
   // Lista suspensa só com as métricas que o dashboard da aba lê (ainda aceita digitar outra, com aviso).
@@ -126,31 +160,75 @@ function addSectionSheet(wb: ExcelJS.Workbook, section: Section, rows: Row[]) {
       errorTitle: 'Métrica fora do dashboard', error: `O dashboard ${title} lê: ${Object.keys(metrics).join(', ')}.`,
     }
     ws.getCell(`C${i}`).dataValidation = { type: 'decimal', operator: 'greaterThanOrEqual', allowBlank: true, formulae: [-1e15], showErrorMessage: true, errorTitle: 'Valor inválido', error: 'Digite só o número.' }
+    ws.getCell(`D${i}`).dataValidation = {
+      type: 'date', operator: 'greaterThan', allowBlank: true, formulae: [new Date('2000-01-01')], showErrorMessage: true, errorStyle: 'warning',
+      errorTitle: 'Data inválida', error: 'Use DD/MM/AAAA.',
+    }
   }
 }
 
 function addInstructions(wb: ExcelJS.Workbook) {
-  const ws = wb.addWorksheet('Instruções')
-  ws.columns = [{ width: 16 }, { width: 24 }, { width: 14 }, { width: 80 }]
-  const header = (values: string[]) => ws.addRow(values).eachCell((c) => Object.assign(c, HEADER))
-  const title = ws.addRow(['Como preencher'])
-  title.font = { ...FONT, bold: true, size: 14 }
-  ws.addRow(['Preencha uma linha por lançamento nas abas Comercial e Operacional. Células amarelas = valor a preencher. Apague as linhas de exemplo antes de importar.']).font = FONT
-  ws.addRow([])
-  header(['aba', 'coluna', 'obrigatória', 'como preencher'])
-  ws.addRow(['Comercial', 'vendedor', 'não', 'nome do vendedor (usado no ranking Top vendedores)'])
-  ws.addRow(['Operacional', 'dimensao', 'não', 'conta, lead ou responsável (usado na lista Contas por lead)'])
-  ws.addRow(['as duas', 'metrica', 'sim', 'escolha na lista suspensa'])
-  ws.addRow(['as duas', 'valor', 'sim', 'só o número: sem R$ ou %; vírgula ou ponto para decimais'])
-  ws.addRow(['as duas', 'data', 'sim', 'DD/MM/AAAA'])
-  ws.addRow([])
-  header(['aba', 'metrica', 'formato', 'onde aparece'])
-  for (const section of SECTIONS) {
-    for (const [key, { fmt, hint }] of Object.entries(SHEETS[section].metrics)) {
-      ws.addRow([SHEETS[section].title, key, fmt === INT ? 'inteiro' : fmt.includes('R$') ? 'R$' : '%', hint])
-    }
+  const ws = wb.addWorksheet('Instruções', { views: [{ showGridLines: false }], properties: { tabColor: { argb: MUTED } }, pageSetup: PAGE })
+  ws.columns = [{ width: 16 }, { width: 24 }, { width: 14 }, { width: 72 }]
+  const merged = (text: string, font: Partial<ExcelJS.Font>, height: number, bg?: string) => {
+    const row = ws.addRow([text])
+    ws.mergeCells(row.number, 1, row.number, 4)
+    const c = row.getCell(1)
+    c.font = { ...FONT, ...font }
+    c.alignment = { vertical: 'middle', wrapText: true, indent: 1 }
+    if (bg) c.fill = fill(bg)
+    row.height = height
   }
-  ws.eachRow((row, i) => { if (i > 3) row.eachCell((c) => { c.font ??= FONT; c.alignment = { wrapText: true, vertical: 'top' } }) })
+  const heading = (text: string) => { ws.addRow([]); merged(text, { bold: true, size: 12, color: { argb: RED } }, 22) }
+  const table = (head: string[], body: string[][]) => {
+    ws.addRow(head).eachCell((c) => Object.assign(c, HEADER))
+    ws.lastRow!.height = 22
+    body.forEach((values, i) => {
+      const row = ws.addRow(values)
+      for (const col of [1, 2, 3, 4]) {
+        const c = row.getCell(col)
+        c.font = col === 2 ? { ...FONT, bold: true } : FONT
+        c.border = GRID
+        c.alignment = { vertical: 'middle', wrapText: true, indent: 1 }
+        if (i % 2) c.fill = fill('FFFAFAFA')
+      }
+      row.height = 20
+    })
+  }
+
+  merged('Modelo de importação de métricas', { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }, 34, DARK)
+  merged('V4 Dashboard · preencha as abas Comercial e Operacional e importe o arquivo em Importar planilha.', { color: { argb: MUTED } }, 20)
+
+  heading('Passo a passo')
+  ;[
+    'Apague as linhas de exemplo (texto cinza em itálico), se houver.',
+    'Preencha uma linha por lançamento. As células amarelas são o valor a preencher.',
+    'Escolha a métrica na lista suspensa e digite a data como DD/MM/AAAA.',
+    'Não renomeie as abas nem os cabeçalhos da linha 1: é por eles que a importação lê o arquivo.',
+    'Salve e envie o arquivo em Importar planilha, no dashboard.',
+  ].forEach((step, i) => {
+    const row = ws.addRow([String(i + 1), step])
+    ws.mergeCells(row.number, 2, row.number, 4)
+    row.getCell(1).font = { ...FONT, bold: true, color: { argb: RED } }
+    row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+    row.getCell(2).font = FONT
+    row.getCell(2).alignment = { vertical: 'middle', wrapText: true }
+    row.height = 20
+  })
+
+  heading('Colunas')
+  table(['aba', 'coluna', 'obrigatória', 'como preencher'], [
+    ['Comercial', 'vendedor', 'não', 'nome do vendedor (usado no ranking Top vendedores)'],
+    ['Operacional', 'dimensao', 'não', 'conta, lead ou responsável (usado na lista Contas por lead)'],
+    ['as duas', 'metrica', 'sim', 'escolha na lista suspensa'],
+    ['as duas', 'valor', 'sim', 'só o número: sem R$ ou %; vírgula ou ponto para decimais'],
+    ['as duas', 'data', 'sim', 'DD/MM/AAAA'],
+  ])
+
+  heading('Métricas')
+  table(['aba', 'metrica', 'formato', 'onde aparece'], SECTIONS.flatMap((section) =>
+    Object.entries(SHEETS[section].metrics).map(([key, { fmt, hint }]) =>
+      [SHEETS[section].title, key, fmt === INT ? 'inteiro' : fmt.includes('R$') ? 'R$' : '%', hint])))
 }
 
 export async function metricsTemplate(format: 'xlsx' | 'csv', rows = EXAMPLES): Promise<Buffer> {
@@ -159,7 +237,7 @@ export async function metricsTemplate(format: 'xlsx' | 'csv', rows = EXAMPLES): 
     return Buffer.from('﻿' + XLSX.utils.sheet_to_csv(sheet, { FS: ';' }), 'utf8')
   }
   const wb = new ExcelJS.Workbook()
-  for (const section of SECTIONS) addSectionSheet(wb, section, rows.filter((r) => r.section === section))
+  for (const section of SECTIONS) addSectionSheet(wb, section, rows.filter((r) => r.section === section), rows === EXAMPLES)
   addInstructions(wb)
   return Buffer.from(await wb.xlsx.writeBuffer())
 }
