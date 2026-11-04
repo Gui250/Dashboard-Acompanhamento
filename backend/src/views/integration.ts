@@ -171,3 +171,38 @@ export const googleCampaignsView = campaignsView({ status: z.enum(['ativa', 'pau
 
 // Chave fixa do servidor MCP (env MCP_API_KEY); null = só o JWT do login entra.
 export const mcpConfigView = z.object({ apiKey: z.string().nullable() })
+
+// --- WeSales (GoHighLevel) --- token nunca volta ao cliente.
+export const wesalesConfigBody = z.object({
+  token: z.string().trim().startsWith('pit-').optional(),
+  locationId: z.string().trim().regex(/^[A-Za-z0-9]+$/),
+})
+
+export const wesalesConfigView = z.object({
+  configured: z.boolean(),
+  locationId: z.string().nullable(),
+  locationName: z.string().nullable(),
+})
+
+export const wesalesSummaryView = z.object({
+  location: z.object({ id: z.string(), name: z.string() }),
+  from: z.string(),
+  to: z.string(),
+  totals: z.object({
+    leads: z.number(),
+    open: z.number(),
+    won: z.number(),
+    lost: z.number(),
+    wonValue: z.number(),
+    openValue: z.number(),
+    conversion: z.number(),
+  }),
+  pipelines: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      stages: z.array(z.object({ id: z.string(), name: z.string(), count: z.number(), value: z.number() })),
+    }),
+  ),
+  owners: z.array(z.object({ name: z.string(), leads: z.number(), won: z.number(), wonValue: z.number() })),
+})

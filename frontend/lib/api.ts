@@ -473,3 +473,27 @@ export function getGoogleAccounts(from?: string, to?: string) {
 export function getMcpConfig() {
   return apiRequest<{ apiKey: string | null }>("/integrations/mcp", undefined, true);
 }
+
+export type WesalesConfig = { configured: boolean; locationId: string | null; locationName: string | null };
+
+// Leads = criadas no período; vendas (won) = ganhas no período; etapas = foto atual das criadas no período.
+export type WesalesSummary = {
+  location: { id: string; name: string };
+  from: string;
+  to: string;
+  totals: { leads: number; open: number; won: number; lost: number; wonValue: number; openValue: number; conversion: number };
+  pipelines: { id: string; name: string; stages: { id: string; name: string; count: number; value: number }[] }[];
+  owners: { name: string; leads: number; won: number; wonValue: number }[];
+};
+
+export function getWesalesConfig() {
+  return apiRequest<WesalesConfig>("/integrations/wesales", undefined, true);
+}
+
+export function saveWesalesConfig(input: { token?: string; locationId: string }) {
+  return apiRequest<WesalesConfig>("/integrations/wesales", { method: "PUT", body: JSON.stringify(input) }, true);
+}
+
+export function getWesalesSummary(from?: string, to?: string) {
+  return apiRequest<WesalesSummary>(`/wesales/summary?${rangeParams(from, to)}`, undefined, true);
+}

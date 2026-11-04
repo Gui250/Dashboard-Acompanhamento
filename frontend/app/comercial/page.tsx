@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ChartSkeleton, DashboardError, KpiGrid, LoadingDashboard, PageIntro, RecentMetrics } from "@/components/dashboard/dashboard-parts";
 import { MetricDialog } from "@/components/dashboard/metric-dialog";
 import { ImportDialog } from "@/components/dashboard/import-dialog";
+import { WesalesSection } from "@/components/dashboard/wesales-section";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import type { Metric } from "@/lib/api";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -48,6 +49,7 @@ export default function ComercialPage() {
           {!isLoading && <RecentMetrics metrics={metrics} />}
         </>
       )}
+      <WesalesSection />
     </div>
   );
 }

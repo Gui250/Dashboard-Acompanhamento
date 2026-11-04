@@ -110,3 +110,19 @@ export async function saveGoogleCredentials({ credentials, developerToken }: { c
 
 // Desconectar = volta para as credenciais padrão do servidor; o developer token fica.
 export const clearGoogleConnection = () => remove([GOOGLE_TOKEN, GOOGLE_EMAIL, GOOGLE_CREDENTIALS])
+
+const WESALES_TOKEN = 'wesales_token'
+const WESALES_LOCATION = 'wesales_location_id'
+
+// null = WeSales ainda não configurado.
+export async function getWesalesConfig(): Promise<{ token: string; locationId: string } | null> {
+  const s = await read([WESALES_TOKEN, WESALES_LOCATION])
+  return s[WESALES_TOKEN] && s[WESALES_LOCATION] ? { token: decrypt(s[WESALES_TOKEN]), locationId: s[WESALES_LOCATION] } : null
+}
+
+// token omitido = mantém o atual e só troca a subconta.
+export async function saveWesalesConfig({ token, locationId }: { token?: string; locationId: string }) {
+  const rows = [{ key: WESALES_LOCATION, value: locationId }]
+  if (token) rows.push({ key: WESALES_TOKEN, value: encrypt(token) })
+  await upsert(rows)
+}
