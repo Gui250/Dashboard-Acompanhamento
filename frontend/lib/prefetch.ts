@@ -9,6 +9,7 @@ import {
   getMetaAccounts,
   getMetaCampaigns,
   getMetaTopAds,
+  getWesalesSummary,
   type DateRange,
   type MetricSection,
 } from "@/lib/api";
@@ -72,6 +73,11 @@ export function adsQuery(source: AdsSource, days: number) {
   return { key: `${source}:${from}:${to}`, fetcher };
 }
 
+export function wesalesQuery(days: number) {
+  const { from, to } = lastDays(days);
+  return { key: `wesales:${from}:${to}`, fetcher: () => orNull(getWesalesSummary(from, to)) };
+}
+
 function prefetchAds(source: AdsSource, days = DEFAULT_DAYS) {
   const { key, fetcher } = adsQuery(source, days);
   prefetchQuery(key, fetcher, ADS_STALE_MS).catch(() => undefined); // o erro aparece quando a seção montar
@@ -84,7 +90,11 @@ export function prefetchAppData() {
 }
 
 export function prefetchRouteData(href: string) {
-  if (href.startsWith("/comercial")) void prefetchDashboard("comercial", "faturamento", "vendas");
+  if (href.startsWith("/comercial")) {
+    void prefetchDashboard("comercial", "faturamento", "vendas");
+    const wesales = wesalesQuery(DEFAULT_DAYS);
+    prefetchQuery(wesales.key, wesales.fetcher, ADS_STALE_MS).catch(() => undefined);
+  }
   else if (href.startsWith("/operacional")) {
     void prefetchDashboard("operacional", "criativos_em_esteira", "contas_ativas", lastDays(DEFAULT_DAYS));
     prefetchAds("meta");

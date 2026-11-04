@@ -5,14 +5,17 @@ import {
   clearGoogleConnection,
   getGoogleConfig,
   getMetaConfig,
+  getWesalesConfig,
   getOpenAIConfig,
   saveGoogleConfig,
   saveGoogleCredentials,
   saveMetaConfig,
+  saveWesalesConfig,
   saveOpenAIConfig,
 } from '../models/setting.js'
 import { accountInsights, activeAds, adCreatives, adInsights, campaignInsights, getBusiness, listBusinessAdAccounts, MetaError, toTotals } from '../lib/meta.js'
 import * as google from '../lib/google.js'
+import * as wesales from '../lib/wesales.js'
 import { webUrl } from '../lib/urls.js'
 import { hiddenAdIds, setAdHidden } from '../models/hidden-ad.js'
 import type {
@@ -26,6 +29,7 @@ import type {
   metaAdsQuery,
   metaCampaignsQuery,
   metaConfigBody,
+  wesalesConfigBody,
   openAIConfigBody,
   openAIModelsBody,
 } from '../views/integration.js'
@@ -273,6 +277,46 @@ export async function googleCampaigns(req: FastifyRequest<{ Querystring: z.infer
     return { accountId: account.id, from, to, campaigns: await google.campaignInsights(auth, account, from, to) }
   } catch (e) {
     return reply.status(502).send({ message: e instanceof google.GoogleError ? e.message : 'Falha ao consultar o Google Ads.' })
+  }
+}
+
+// --- WeSales ---
+// Nome da subconta vem da API; se ela falhar, mostra configurado sem nome.
+export async function showWesales() {
+  const config = await getWesalesConfig()
+  if (!config) return { configured: false, locationId: null, locationName: null }
+  const location = await wesales.getLocation(config).catch(() => null)
+  return { configured: true, locationId: config.locationId, locationName: location?.name ?? null }
+}
+
+// Testa lendo a subconta e as oportunidades (escopos diferentes no token) antes de salvar.
+export async function saveWesales(req: FastifyRequest<{ Body: z.infer<typeof wesalesConfigBody> }>, reply: FastifyReply) {
+  const { token, locationId } = req.body
+  const key = token ?? (await getWesalesConfig())?.token
+  if (!key) return reply.status(409).send({ message: 'Informe o token do WeSales.' })
+  try {
+    await Promise.all([wesales.getLocation({ token: key, locationId }), wesales.listPipelines({ token: key, locationId })])
+  } catch (e) {
+    return reply.status(400).send({ message: `Token ou Location ID do WeSales inválido.${e instanceof wesales.WesalesError ? ` ${e.message}` : ''}` })
+  }
+  await saveWesalesConfig({ token, locationId })
+  return showWesales()
+}
+
+export async function wesalesSummary(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
+  const config = await getWesalesConfig()
+  if (!config) return reply.status(409).send({ message: 'Configure o WeSales em Integrações.' })
+  const { from, to } = range(req.query)
+  try {
+    const [location, pipelines, users, opps] = await Promise.all([
+      wesales.getLocation(config),
+      wesales.listPipelines(config),
+      wesales.listUsers(config),
+      wesales.listOpportunities(config),
+    ])
+    return { location: { id: location.id, name: location.name }, from, to, ...wesales.summarize(opps, pipelines, users, from, to) }
+  } catch (e) {
+    return reply.status(502).send({ message: e instanceof wesales.WesalesError ? e.message : 'Falha ao consultar o WeSales.' })
   }
 }
 

@@ -7,6 +7,7 @@ import { PageIntro } from "@/components/dashboard/dashboard-parts";
 import { GoogleIntegrationCard } from "@/components/dashboard/google-integration-card";
 import { McpCard } from "@/components/dashboard/mcp-card";
 import { MetaIntegrationCard } from "@/components/dashboard/meta-integration-card";
+import { WesalesIntegrationCard } from "@/components/dashboard/wesales-integration-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -64,7 +65,7 @@ export default function IntegracoesPage() {
       <PageIntro
         eyebrow="Integrações"
         title="Conecte as ferramentas do painel."
-        description="OpenAI alimenta o assistente, Meta e Google Ads trazem as contas de anúncio e o MCP leva os dados do painel para outros clientes de IA. Tokens das integrações ficam cifrados no servidor."
+        description="OpenAI alimenta o assistente, Meta e Google Ads trazem as contas de anúncio, o WeSales traz o funil comercial e o MCP leva os dados do painel para outros clientes de IA. Tokens das integrações ficam cifrados no servidor."
         action={null}
       />
 
@@ -106,6 +107,7 @@ export default function IntegracoesPage() {
 
       <MetaIntegrationCard />
       <GoogleIntegrationCard />
+      <WesalesIntegrationCard />
       <McpCard />
     </div>
   );

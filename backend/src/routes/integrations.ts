@@ -27,6 +27,9 @@ import {
   openAIConfigView,
   openAIModelsBody,
   openAIModelsView,
+  wesalesConfigBody,
+  wesalesConfigView,
+  wesalesSummaryView,
 } from '../views/integration.js'
 
 export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -98,6 +101,17 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     '/google/campaigns',
     { preHandler: metrics, schema: { querystring: googleCampaignsQuery, response: { 200: googleCampaignsView, 404: errorView, 409: errorView, 502: errorView } } },
     controller.googleCampaigns,
+  )
+  app.get('/integrations/wesales', { preHandler: view, schema: { response: { 200: wesalesConfigView } } }, controller.showWesales)
+  app.put(
+    '/integrations/wesales',
+    { preHandler: manage, schema: { body: wesalesConfigBody, response: { 200: wesalesConfigView, 400: errorView, 409: errorView } } },
+    controller.saveWesales,
+  )
+  app.get(
+    '/wesales/summary',
+    { preHandler: metrics, schema: { querystring: dateRangeQuery, response: { 200: wesalesSummaryView, 409: errorView, 502: errorView } } },
+    controller.wesalesSummary,
   )
   app.get('/integrations/mcp', { preHandler: view, schema: { response: { 200: mcpConfigView } } }, controller.showMcp)
 }
