@@ -21,6 +21,7 @@ const TopCreativesSection = dynamic(() => import("@/components/dashboard/top-cre
 const MetaAccountsSection = dynamic(() => adsSection().then((mod) => mod.MetaAccountsSection), { ssr: false, loading: () => <AdsSkeleton /> });
 const GoogleAccountsSection = dynamic(() => adsSection().then((mod) => mod.GoogleAccountsSection), { ssr: false, loading: () => <AdsSkeleton /> });
 const AdAccountView = dynamic(() => adsSection().then((mod) => mod.AdAccountView), { ssr: false, loading: () => <AdsSkeleton /> });
+const WesalesAccountSection = dynamic(() => import("@/components/dashboard/wesales-section").then((mod) => mod.WesalesAccountSection), { ssr: false });
 
 function total(metrics: Metric[], key: string) {
   return metrics.filter((metric) => metric.key === key).reduce((sum, metric) => sum + metric.value, 0);
@@ -53,6 +54,7 @@ export default function OperacionalPage() {
         <>
           <AdAccountView source={adAccount.source} accountId={adAccount.id} days={days} />
           {adAccount.source === "meta" && <TopCreativesSection days={days} accountId={adAccount.id} />}
+          <WesalesAccountSection source={adAccount.source} accountId={adAccount.id} days={days} />
         </>
       ) : (
         <>
