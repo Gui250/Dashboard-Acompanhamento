@@ -70,7 +70,6 @@ export function GoogleIntegrationCard() {
   }
 
   const connected = !!config?.source;
-  const ready = connected && config.developerToken;
 
   return (
     <Card>
@@ -83,10 +82,7 @@ export function GoogleIntegrationCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {config && !config.developerToken && (
-          <p className="text-sm leading-6 text-muted-foreground">Falta o developer token do Google Ads (Central de API da conta administradora).</p>
-        )}
-        {ready && (
+        {connected && (
           <div className="flex flex-wrap gap-2">
             <Button asChild><Link href="/operacional">Ver contas</Link></Button>
             {config.source !== "direto" && (
@@ -110,7 +106,7 @@ export function GoogleIntegrationCard() {
             <p className="text-xs leading-5 text-muted-foreground">Chave JSON de uma conta de serviço do Google Cloud. Adicione o e-mail dela como usuário na conta do Google Ads.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="googleDevToken">{config?.developerToken ? "Trocar developer token (opcional)" : "Developer token"}</Label>
+            <Label htmlFor="googleDevToken">{config?.developerToken ? "Trocar developer token (opcional)" : "Developer token (opcional)"}</Label>
             <Input id="googleDevToken" type="password" autoComplete="off" value={developerToken} onChange={(e) => setDeveloperToken(e.target.value.trim())} />
           </div>
           <div className="flex flex-wrap gap-2">

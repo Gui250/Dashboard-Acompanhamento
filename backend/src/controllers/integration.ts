@@ -200,8 +200,6 @@ export async function showGoogle() {
   }
 }
 
-const noDevToken = { message: 'Informe o developer token do Google Ads em Integrações.' }
-
 // Testa (autentica + lista as contas acessíveis) antes de salvar.
 export async function saveGoogle(req: FastifyRequest<{ Body: z.infer<typeof googleCredentialsBody> }>, reply: FastifyReply) {
   const { credentials, developerToken } = req.body
@@ -214,7 +212,6 @@ export async function saveGoogle(req: FastifyRequest<{ Body: z.infer<typeof goog
   }
   const s = await getGoogleConfig()
   const devToken = developerToken ?? s.developerToken ?? process.env.GOOGLE_ADS_DEVELOPER_TOKEN
-  if (!devToken) return reply.status(409).send(noDevToken)
   const { auth } = parsed ? google.googleAuth(parsed, null) : await googleConn()
   try {
     await google.accessibleCustomers({ token: await google.accessToken(auth), developerToken: devToken })
@@ -254,7 +251,6 @@ export async function googleCallback(req: FastifyRequest<{ Querystring: z.infer<
 
 export async function googleAccounts(req: FastifyRequest<{ Querystring: z.infer<typeof dateRangeQuery> }>, reply: FastifyReply) {
   const c = await googleConn()
-  if (!c.developerToken) return reply.status(409).send(noDevToken)
   const { from, to } = range(req.query)
   try {
     const auth = { token: await google.accessToken(c.auth), developerToken: c.developerToken }
@@ -267,7 +263,6 @@ export async function googleAccounts(req: FastifyRequest<{ Querystring: z.infer<
 
 export async function googleCampaigns(req: FastifyRequest<{ Querystring: z.infer<typeof googleCampaignsQuery> }>, reply: FastifyReply) {
   const c = await googleConn()
-  if (!c.developerToken) return reply.status(409).send(noDevToken)
   const { from, to } = range(req.query)
   try {
     const auth = { token: await google.accessToken(c.auth), developerToken: c.developerToken }

@@ -81,14 +81,15 @@ export const directIdentity = (auth: GoogleAuth) =>
 // --- Google Ads ---
 type AdsError = { error?: { message?: string; details?: { errors?: { message?: string }[] }[] } }
 
-export type AdsAuth = { token: string; developerToken: string }
+// Developer token virou opcional em 09/2026 (o acesso agora é do projeto do Cloud); só vai no header se existir.
+export type AdsAuth = { token: string; developerToken?: string | null }
 
 async function ads<T>({ token, developerToken }: AdsAuth, path: string, opts: { loginCustomerId?: string; query?: string } = {}): Promise<T> {
   const res = await fetch(ADS + path, {
     method: opts.query ? 'POST' : 'GET',
     headers: {
       authorization: `Bearer ${token}`,
-      'developer-token': developerToken,
+      ...(developerToken && { 'developer-token': developerToken }),
       ...(opts.loginCustomerId && { 'login-customer-id': opts.loginCustomerId }),
       ...(opts.query && { 'content-type': 'application/json' }),
     },
@@ -114,7 +115,7 @@ type CustomerClientRow = { customerClient: { id: string; descriptiveName?: strin
 
 // Contas de anúncio (não-MCC) que o usuário alcança: as de acesso direto e as filhas de cada MCC.
 // customer_client inclui a própria conta (nível 0), então conta avulsa também aparece.
-// Também valida token + developer token antes de salvar credenciais.
+// Também valida as credenciais antes de salvar.
 export const accessibleCustomers = (a: AdsAuth) => ads<{ resourceNames?: string[] }>(a, '/customers:listAccessibleCustomers')
 
 export async function listAccounts(a: AdsAuth): Promise<AdsAccount[]> {
@@ -135,7 +136,7 @@ export async function listAccounts(a: AdsAuth): Promise<AdsAccount[]> {
         }))
       : [],
   )
-  // Raiz sem acesso (conta cancelada etc.) é pulada; se todas falharem, mostra o erro (ex.: developer token só de teste).
+  // Raiz sem acesso (conta cancelada etc.) é pulada; se todas falharem, mostra o erro (ex.: projeto do Cloud só com acesso de teste).
   const failed = settled.find((s) => s.status === 'rejected')
   if (!accounts.length && failed) throw failed.reason
   return [...new Map(accounts.map((a) => [a.id, a])).values()]
