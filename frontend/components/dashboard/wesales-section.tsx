@@ -6,12 +6,10 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { AdsSkeleton, DashboardError } from "@/components/dashboard/dashboard-parts";
-import { PERIODS, type Period } from "@/components/dashboard/operacional-filters";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import type { WesalesSummary } from "@/lib/api";
-import { ADS_STALE_MS, DEFAULT_DAYS, wesalesQuery } from "@/lib/prefetch";
+import type { GoogleAccountsReport, MetaAccountsReport, WesalesSummary } from "@/lib/api";
+import { ADS_STALE_MS, adsQuery, wesalesQuery, type AdsSource } from "@/lib/prefetch";
 import { useQuery } from "@/hooks/use-query";
 import { cn } from "@/lib/utils";
 
@@ -20,9 +18,20 @@ const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL
 const pct = (value: number) => `${value.toFixed(1).replace(".", ",")}%`;
 const SELECT = "h-9 min-w-0 rounded-md border border-input bg-white px-3 text-sm outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/25 sm:w-72";
 
+// ponytail: o WeSales conectado é de um cliente só; vincular a integração à conta de anúncio quando outro cliente tiver WeSales.
+const WESALES_CLIENT = "zenite";
+const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+// Na visão de uma conta de anúncio, mostra o WeSales só se a conta for do cliente dele. Mesma chave de cache da lista de contas.
+export function WesalesAccountSection({ source, accountId, days }: { source: AdsSource; accountId: string; days: number }) {
+  const { key, fetcher } = useMemo(() => adsQuery(source, days), [source, days]);
+  const { data } = useQuery(key, fetcher as () => Promise<MetaAccountsReport | GoogleAccountsReport | null>, ADS_STALE_MS);
+  const name = data?.accounts.find((a) => a.id === accountId)?.name ?? "";
+  return normalize(name).includes(WESALES_CLIENT) ? <WesalesSection days={days} /> : null;
+}
+
 // Funil de vendas do WeSales: KPIs do período, oportunidades por etapa do pipeline escolhido e resultado por responsável.
-export function WesalesSection() {
-  const [days, setDays] = useState<Period>(DEFAULT_DAYS);
+function WesalesSection({ days }: { days: number }) {
   const query = useMemo(() => wesalesQuery(days), [days]);
   const { data, error, isLoading, refresh } = useQuery(query.key, query.fetcher as () => Promise<WesalesSummary | null>, ADS_STALE_MS);
   // Trocar o período mantém o resultado anterior na tela (esmaecido) até o novo chegar.
@@ -65,18 +74,13 @@ export function WesalesSection() {
 
   return (
     <section className="space-y-4" aria-busy={isLoading}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="data-label flex items-center gap-1.5 text-primary"><Handshake className="h-3 w-3" />WeSales</p>
-          <h3 className="mt-1 font-display text-2xl font-extrabold tracking-[-0.03em]">{report?.location.name ?? "Funil de vendas"}</h3>
-          <p className="flex h-4 items-center gap-1.5 text-xs text-muted-foreground">
-            {report && <>{format(new Date(`${report.from}T00:00:00`), "dd/MM/yyyy")} a {format(new Date(`${report.to}T00:00:00`), "dd/MM/yyyy")}</>}
-            {refreshing && <><Loader2 className="h-3 w-3 animate-spin" />atualizando</>}
-          </p>
-        </div>
-        <div className="flex gap-2" role="group" aria-label="Período">
-          {PERIODS.map((p) => <Button key={p} size="sm" variant={p === days ? "default" : "outline"} aria-pressed={p === days} onClick={() => setDays(p)}>{p} dias</Button>)}
-        </div>
+      <div>
+        <p className="data-label flex items-center gap-1.5 text-primary"><Handshake className="h-3 w-3" />WeSales</p>
+        <h3 className="mt-1 font-display text-2xl font-extrabold tracking-[-0.03em]">{report?.location.name ?? "Funil de vendas"}</h3>
+        <p className="flex h-4 items-center gap-1.5 text-xs text-muted-foreground">
+          {report && <>{format(new Date(`${report.from}T00:00:00`), "dd/MM/yyyy")} a {format(new Date(`${report.to}T00:00:00`), "dd/MM/yyyy")}</>}
+          {refreshing && <><Loader2 className="h-3 w-3 animate-spin" />atualizando</>}
+        </p>
       </div>
 
       {!report ? <AdsSkeleton /> : (

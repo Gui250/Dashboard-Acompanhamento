@@ -90,11 +90,7 @@ export function prefetchAppData() {
 }
 
 export function prefetchRouteData(href: string) {
-  if (href.startsWith("/comercial")) {
-    void prefetchDashboard("comercial", "faturamento", "vendas");
-    const wesales = wesalesQuery(DEFAULT_DAYS);
-    prefetchQuery(wesales.key, wesales.fetcher, ADS_STALE_MS).catch(() => undefined);
-  }
+  if (href.startsWith("/comercial")) void prefetchDashboard("comercial", "faturamento", "vendas");
   else if (href.startsWith("/operacional")) {
     void prefetchDashboard("operacional", "criativos_em_esteira", "contas_ativas", lastDays(DEFAULT_DAYS));
     prefetchAds("meta");
